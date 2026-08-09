@@ -1,0 +1,2340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Firo Spark Sync Monitor</title>
+<meta name="description" content="Public Spark sync health for Firo Electrum backends: anon set fetch, setHash consistency, and tip lag for the Firo community." />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.svg" />
+<meta name="theme-color" content="#1a1410" />
+<meta name="author" content="panagot" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Firo Spark Sync Monitor" />
+<meta property="og:description" content="Spark anon set fetch and setHash consistency across public Firo Electrum backends. Built for the Firo community. Privacy safe probes only." />
+<meta property="og:site_name" content="Firo Spark Sync Monitor" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Firo Spark Sync Monitor" />
+<meta name="twitter:description" content="A backend can be green on height and still fail Spark sync. Fleet wide anon set fetch health and setHash for Firo." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script src="/enhance.js" defer></script>
+<style>
+  :root{
+    --bg:#12100e; --panel:#1c1916; --panel2:#171411; --border:#2e2924;
+    --muted:#9a9186; --text:#f2ebe3; --ember:#e85d2a; --ember2:#f0a35a;
+    --green:#3fa66a; --yellow:#d4a017; --red:#d64545; --cyan:#5eb8b0;
+    --sans:'IBM Plex Sans', system-ui, sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body:before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(900px 420px at 85% -8%, rgba(232,93,42,.08), transparent 60%)}
+  .shell{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:24px 18px 64px}
+  .flame{width:22px;height:22px;border-radius:5px;background:var(--ember);display:inline-block}
+  /* masthead */
+  .masthead{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  .mast-left{display:flex;align-items:center;gap:14px;min-width:0}
+  .logo{width:42px;height:42px;border-radius:8px;background:var(--ember);display:flex;align-items:center;justify-content:center;flex:none;border:1px solid rgba(255,255,255,.12)}
+  .logo svg{width:24px;height:24px}
+  .kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--ember2);font-weight:500}
+  .mast-titles{min-width:0}
+  .mast-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:5px}
+  h1{font-size:22px;margin:0;letter-spacing:-.02em;font-weight:700;line-height:1.05}
+  h1 .grad{color:var(--ember2)}
+  .badge{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--ember2);border:1px solid rgba(240,163,90,.35);padding:5px 9px;border-radius:4px;display:inline-flex;align-items:center;gap:6px;background:rgba(240,163,90,.08);font-weight:600;line-height:1;flex:none;position:relative;top:0.5px}
+  .badge.live{color:var(--green);border-color:rgba(63,166,106,.4);background:rgba(63,166,106,.1)}
+  .badge.snap{color:var(--yellow);border-color:rgba(212,160,23,.4);background:rgba(212,160,23,.1)}
+  .livedot{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .badge.live .livedot{animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.badge.live .livedot,.hbdot.g,.hbdot.r,.spin,.skel:after{animation:none!important}}
+  .mastpill{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:var(--panel)}
+  .mastpill .seg{display:flex;flex-direction:column;gap:2px;line-height:1.15;min-width:0}
+  .mastpill .v{font-size:14px;font-weight:650;letter-spacing:-.01em}
+  .mastpill .k{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .hbdot{width:10px;height:10px;border-radius:2px;background:var(--muted);flex:none}
+  .hbdot.g{background:var(--green)}
+  .hbdot.y{background:var(--yellow)}
+  .hbdot.r{background:var(--red)}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:14px;max-width:720px;line-height:1.55;padding-top:14px;border-top:1px solid var(--border)}
+  @media(max-width:720px){.mastpill{width:100%}h1{font-size:19px}}
+  .tabs{display:flex;gap:2px;margin-top:20px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .tab{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px;cursor:pointer;border:none;background:none;border-bottom:2px solid transparent}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--ember2);border-bottom-color:var(--ember)}
+  .view{display:none} .view.active{display:block}
+  .hero{margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px}
+  .hk{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--ember2)}
+  .hq{font-size:24px;font-weight:650;margin:8px 0 4px;letter-spacing:-.025em;line-height:1.2;max-width:34ch}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .chip{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:5px 9px;background:transparent}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  .cards.three{grid-template-columns:repeat(3,1fr)}
+  .card{border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--panel2)}
+  .card .n{font-family:var(--mono);font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .card .l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:3px}
+  .card .s{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+  .card.g .n{color:var(--green)} .card.y .n{color:var(--yellow)} .card.r .n{color:var(--red)} .card.c .n{color:var(--cyan)} .card.e .n{color:var(--ember2)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}}
+  /* overflow:visible so header tooltips are not clipped; inner widgets keep their own overflow */
+  .panel{margin-top:14px;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:visible}
+  .phead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .phead h2{font-size:13px;margin:0;font-weight:650;letter-spacing:-.01em}
+  .phead .h{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .pbody{padding:14px 16px}
+  .tblwrap{overflow:auto;max-height:min(70vh,640px);scrollbar-width:thin;scrollbar-color:rgba(240,163,90,.45) rgba(255,255,255,.04)}
+  .tblwrap table thead th{position:sticky;top:0;background:var(--panel);z-index:4}
+  .tblwrap table th:first-child,.tblwrap table td:first-child{position:sticky;left:0;background:var(--panel);z-index:1;min-width:140px;box-shadow:4px 0 8px rgba(0,0,0,.18)}
+  .tblwrap table thead th:first-child{z-index:5}
+  .tblwrap::-webkit-scrollbar,.tbl-scroll::-webkit-scrollbar,.scorewrap::-webkit-scrollbar{width:10px;height:10px}
+  .tblwrap::-webkit-scrollbar-track,.tbl-scroll::-webkit-scrollbar-track,.scorewrap::-webkit-scrollbar-track{
+    background:rgba(255,255,255,.035);border-radius:999px;margin:2px
+  }
+  .tblwrap::-webkit-scrollbar-thumb,.tbl-scroll::-webkit-scrollbar-thumb,.scorewrap::-webkit-scrollbar-thumb{
+    background:linear-gradient(180deg,rgba(240,163,90,.55),rgba(240,163,90,.28));
+    border-radius:999px;border:2px solid transparent;background-clip:padding-box
+  }
+  .tblwrap::-webkit-scrollbar-thumb:hover,.tbl-scroll::-webkit-scrollbar-thumb:hover,.scorewrap::-webkit-scrollbar-thumb:hover{
+    background:linear-gradient(180deg,rgba(240,163,90,.75),rgba(240,163,90,.42));
+    border:2px solid transparent;background-clip:padding-box
+  }
+  .tblwrap::-webkit-scrollbar-corner,.tbl-scroll::-webkit-scrollbar-corner,.scorewrap::-webkit-scrollbar-corner{background:transparent}
+  .col-sec{display:none}
+  .tblwrap.show-sec .col-sec{display:table-cell}
+  .tbltools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 16px 12px}
+  .legend{display:flex;gap:14px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);font-weight:500}
+  td{padding:12px 14px;border-bottom:1px solid rgba(35,43,57,.6);vertical-align:middle}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:rgba(255,255,255,.025)}
+  tr:last-child td{border-bottom:none}
+  .name{font-weight:600}
+  .host{color:var(--muted);font-size:11px}
+  .op{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .st{font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border-radius:4px;font-weight:600}
+  .st.green{color:var(--green);background:rgba(63,185,80,.12);border:1px solid rgba(63,185,80,.3)}
+  .st.yellow{color:var(--yellow);background:rgba(227,179,65,.12);border:1px solid rgba(227,179,65,.3)}
+  .st.red{color:var(--red);background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.3)}
+  .mono{font-variant-numeric:tabular-nums}
+  .ok{color:var(--green)} .bad{color:var(--red)} .warnc{color:var(--yellow)}
+  .note{margin-top:16px;color:var(--muted);font-size:11.5px;line-height:1.7}
+  .warn{margin-top:14px;border:1px solid rgba(227,179,65,.3);background:rgba(227,179,65,.08);color:var(--yellow);border-radius:10px;padding:10px 14px;font-size:12px}
+  .connbar{margin-top:14px;border:1px solid rgba(248,81,73,.3);background:rgba(248,81,73,.08);color:var(--red);border-radius:10px;padding:9px 14px;font-size:12px;display:none}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.18);border-top-color:var(--ember);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loadwrap{display:flex;align-items:center;gap:11px;color:var(--muted);font-size:13px;padding:22px 4px}
+  .skel{position:relative;overflow:hidden;background:rgba(255,255,255,.04);border-radius:10px}
+  .skel:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);animation:shim 1.3s infinite}
+  @keyframes shim{100%{transform:translateX(100%)}.0{transform:translateX(-100%)}}
+  .skel-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:6px}
+  .skel-cards .skel{height:74px}
+  @media(max-width:640px){.skel-cards{grid-template-columns:repeat(2,1fr)}}
+  .detail-loading{margin-top:8px}
+  .detail-loading .loadwrap{padding:8px 0 18px;color:var(--text);font-size:14px}
+  .detail-loading .loadwrap .subline{display:block;margin-top:6px;font-size:12px;color:var(--muted);font-weight:400;max-width:46ch;line-height:1.5}
+  .detail-loading .skel-line{height:14px;margin:8px 0;max-width:280px}
+  .detail-loading .skel-line.w2{max-width:180px;opacity:.7}
+  .detail-loading .skel-panel{height:120px;margin-top:14px;border-radius:10px}
+  .chart-loading{display:flex;align-items:flex-start;gap:11px;padding:22px 10px;height:100%;box-sizing:border-box}
+  .chart-loading .empty-t{margin:0}
+  .chart-loading .empty-s{margin:4px 0 0}
+  #d-hist-load{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid rgba(232,93,42,.28);border-radius:8px;background:rgba(232,93,42,.07);font-size:13px;color:var(--text)}
+  #d-hist-load[hidden],#d-hist-load[style*="display: none"]{display:none!important}
+  .snapchip{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ember2);border:1px solid rgba(255,179,71,.4);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .cmp-row{display:grid;grid-template-columns:130px 1fr 92px;gap:10px;align-items:center;margin:8px 0;font-size:12px}
+  .cmp-row .cn{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sitefoot{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:44px;padding-top:22px;border-top:1px solid var(--border)}
+  .sf-left{display:flex;align-items:center;gap:11px}
+  .sf-t{font-size:12.5px;color:var(--text);font-weight:600}
+  .sf-s{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .sf-links{display:flex;gap:20px;flex-wrap:wrap}
+  .sf-links a{color:var(--muted);font-size:11.5px;text-decoration:none;border-bottom:1px solid transparent;transition:color .12s,border-color .12s}
+  .sf-links a:hover{color:var(--ember2);border-bottom-color:var(--ember)}
+  @media(max-width:560px){.cmp-row{grid-template-columns:96px 1fr 74px}}
+  :focus-visible{outline:2px solid var(--ember);outline-offset:2px;border-radius:4px}
+  a{color:var(--ember2)}
+  .bar{height:9px;border-radius:5px;background:rgba(255,255,255,.06);overflow:hidden}
+  .bar>span{display:block;height:100%;border-radius:5px}
+  .kv{display:flex;justify-content:space-between;font-size:12px;padding:7px 0;border-bottom:1px solid rgba(35,43,57,.5)}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--muted)}
+  .spark-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  @media(max-width:820px){.spark-cards{grid-template-columns:1fr}}
+  .sc{border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:rgba(255,255,255,.02)}
+  .sc .top2{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .sc .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hashtag{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;word-break:break-all}
+  .prose p{color:var(--muted);font-size:13px;line-height:1.8;margin:0 0 12px}
+  .prose h3{font-size:14px;margin:26px 0 10px;color:var(--text);font-weight:600}
+  .prose h3:first-child{margin-top:0}
+  .prose code{background:rgba(255,255,255,.05);padding:1px 5px;border-radius:4px;font-size:11.5px}
+  .prose ul,.prose ol{color:var(--muted);font-size:13px;line-height:1.75;padding-left:18px;margin:0 0 12px}
+  .prose li{margin:4px 0}
+  .prose pre{overflow:auto;padding:14px 16px;border-radius:10px;background:rgba(0,0,0,.28);border:1px solid var(--border);font-size:11.5px;line-height:1.5;color:var(--text);margin:10px 0 14px}
+  .prose .ftable{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0 16px}
+  .prose .ftable th{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);font-weight:500;background:rgba(255,255,255,.02)}
+  .prose .ftable td{padding:10px 12px;border-bottom:1px solid rgba(35,43,57,.55);color:var(--muted);vertical-align:top;line-height:1.55}
+  .prose .ftable td:first-child{color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;white-space:nowrap}
+  .prose .ftable tr:last-child td{border-bottom:none}
+  .prose .call{margin:14px 0;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,179,71,.28);background:rgba(255,179,71,.06);color:var(--muted);font-size:12.5px;line-height:1.7}
+  .prose .call b{color:var(--ember2)}
+  .prose .call.cyan{border-color:rgba(78,205,196,.35);background:rgba(78,205,196,.07)}
+  .prose .call.cyan b{color:var(--cyan)}
+  .sec-details{margin-top:16px;border:1px solid var(--border);border-radius:10px;background:var(--panel);overflow:hidden}
+  .sec-details>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;font-size:13px;color:var(--text)}
+  .sec-details>summary::-webkit-details-marker{display:none}
+  .sec-details>summary .h{font-size:10.5px;color:var(--muted)}
+  .sec-details[open]>summary{border-bottom:1px solid var(--border)}
+  .sec-details .pbody{padding:16px 18px}
+  .toolrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .tbtn{font-family:var(--mono);font-size:11px;border-radius:5px;padding:7px 11px;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text);text-decoration:none;display:inline-flex;align-items:center}
+  .tbtn:hover{border-color:rgba(240,163,90,.45);color:var(--ember2)}
+  .tbtn.pri{border-color:rgba(94,184,176,.45);background:rgba(94,184,176,.1);color:var(--cyan)}
+  .gate{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .gate .g{flex:1;min-width:150px;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--panel2)}
+  .gate .gl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .gate .gv{font-family:var(--mono);font-size:14px;font-weight:650;margin-top:4px}
+  .gate .gs{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .minitable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .minitable th{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:500}
+  .minitable td{padding:9px 10px;border-bottom:1px solid rgba(35,43,57,.55);vertical-align:middle}
+  .minitable tr:last-child td{border-bottom:none}
+  .copyok{color:var(--green)!important}
+  .epgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0 16px}
+  @media(max-width:720px){.epgrid{grid-template-columns:1fr}}
+  .epcard{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.02)}
+  .epcard .eppath{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;font-weight:600;color:var(--ember2)}
+  .epcard .epdesc{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.55}
+  .epcard a{text-decoration:none}
+  .ms{position:relative;border:1px solid var(--border);border-radius:14px;padding:18px 20px;background:rgba(255,255,255,.02);margin-top:14px}
+  .ms .mh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .ms .mt{font-size:15px;font-weight:600}
+  .ms .when{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .fund{font-size:12px;font-weight:700;color:var(--ember2);border:1px solid rgba(255,179,71,.35);border-radius:5px;padding:3px 10px}
+  .dl{list-style:none;padding:0;margin:12px 0 0}
+  .dl li{position:relative;padding:5px 0 5px 22px;font-size:12.5px;color:var(--text);line-height:1.5}
+  .dl li:before{content:'';position:absolute;left:2px;top:11px;width:8px;height:8px;border-radius:2px;background:var(--ember)}
+  .dl li.done{color:var(--muted)}
+  .dl li.done:before{background:var(--green)}
+  .dl li.done:after{content:' · shipped'; font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-left:6px}
+  .ms.m2 .dl li:before{background:var(--cyan)}
+  .acc{margin-top:12px;font-size:11.5px;color:var(--muted);border-top:1px solid rgba(35,43,57,.6);padding-top:10px}
+  .acc b{color:var(--text)}
+  .timeline{display:flex;gap:0;margin:6px 0 4px;flex-wrap:wrap}
+  .tl{flex:1;min-width:120px;border-top:2px solid var(--border);padding-top:10px;position:relative}
+  .tl:before{content:'';position:absolute;top:-6px;left:0;width:10px;height:10px;border-radius:50%;background:var(--ember)}
+  .tl.c:before{background:var(--cyan)} .tl.done:before{background:var(--green)}
+  .tl .w{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .tl .d{font-size:12px;margin-top:3px}
+  .blink{color:inherit;text-decoration:none;cursor:pointer;border-bottom:1px dotted transparent}
+  .blink:hover{color:var(--ember2);border-bottom-color:var(--ember2)}
+  .back{display:inline-block;margin:2px 0 16px;font-size:12.5px;font-weight:600;color:var(--ember2);text-decoration:none;border-bottom:1px solid rgba(240,163,90,.35)}
+  .back:hover{color:var(--ember);border-bottom-color:var(--ember)}
+  .dhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .chart-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+  /* tooltips — body-portaled on show so .tblwrap/.panel overflow cannot clip them */
+  .tip{position:relative;display:inline-flex;align-items:center;gap:4px;cursor:help;outline:none}
+  .tip .qi{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;border:1px solid var(--border);color:var(--muted);font-size:9px;line-height:1;font-weight:700}
+  .tip:hover .qi,.tip:focus .qi,.tip.tip-live .qi{border-color:var(--ember);color:var(--ember2)}
+  .tip .tt,.tt-portal{width:min(236px,calc(100vw - 24px));background:#0a0e15;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:11px;line-height:1.55;color:var(--text);text-transform:none;letter-spacing:normal;font-weight:400;font-family:var(--sans);box-shadow:0 12px 34px rgba(0,0,0,.55);white-space:normal;pointer-events:none}
+  .tip .tt{position:absolute;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%);opacity:0;visibility:hidden;z-index:60}
+  .tip .tt:after,.tt-portal:after{content:'';position:absolute;border:6px solid transparent}
+  .tip .tt:after{top:100%;left:50%;transform:translateX(-50%);border-top-color:var(--border)}
+  /* In-flow hover kept as fallback; JS portals to .tt-portal.show for real visibility */
+  .tip:hover .tt,.tip:focus .tt,.tip.open .tt{opacity:0;visibility:hidden}
+  .tt-portal{position:fixed;z-index:400;opacity:0;visibility:hidden;transition:opacity .12s}
+  .tt-portal.show{opacity:1;visibility:visible}
+  .tt-portal.place-above:after{top:100%;left:50%;transform:translateX(-50%);border-top-color:var(--border)}
+  .tt-portal.place-below:after{bottom:100%;left:50%;transform:translateX(-50%);border-bottom-color:var(--border)}
+  .tt-portal code{font-family:var(--mono);font-size:10.5px;color:var(--ember2)}
+  /* FAQ assistant */
+  .fab{position:fixed;right:18px;bottom:18px;z-index:80;display:flex;align-items:center;gap:8px;background:var(--ember);color:#1a100a;border:none;border-radius:8px;padding:11px 14px;font-family:var(--sans);font-size:12.5px;font-weight:650;cursor:pointer}
+  .fab:hover{filter:brightness(1.05)}
+  .fab .fi{width:8px;height:8px;border-radius:2px;background:#1a100a}
+  .chatwrap{position:fixed;right:18px;bottom:18px;z-index:90;width:360px;max-width:calc(100vw - 28px);height:520px;max-height:calc(100vh - 36px);background:var(--panel);border:1px solid var(--border);border-radius:10px;display:none;flex-direction:column;overflow:hidden}
+  .chatwrap.open{display:flex}
+  .chead{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(232,93,42,.08)}
+  .chead .ct{font-size:13px;font-weight:650}
+  .chead .cs{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:1px}
+  .cclose{margin-left:auto;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1}
+  .cclose:hover{color:var(--text)}
+  .cbody{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .msg{font-size:12.5px;line-height:1.55;max-width:88%;padding:9px 12px;border-radius:8px}
+  .msg.bot{background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:3px;align-self:flex-start}
+  .msg.me{background:rgba(232,93,42,.12);border:1px solid rgba(232,93,42,.28);border-bottom-right-radius:3px;align-self:flex-end}
+  .msg code{background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;font-size:11px;font-family:var(--mono)}
+  .msg a{color:var(--ember2)}
+  .qchips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 14px 12px}
+  .qchip{font-size:11px;color:var(--ember2);border:1px solid rgba(240,163,90,.3);background:rgba(240,163,90,.06);border-radius:4px;padding:5px 9px;cursor:pointer;font-family:var(--sans);text-align:left}
+  .qchip:hover{background:rgba(240,163,90,.14)}
+  .cfoot{display:flex;gap:8px;padding:11px 12px;border-top:1px solid var(--border)}
+  .cfoot input{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:9px 11px;color:var(--text);font-family:var(--sans);font-size:12.5px}
+  .cfoot input:focus{outline:none;border-color:var(--ember)}
+  .cfoot button{background:var(--ember);border:none;color:#1a100a;border-radius:6px;padding:0 14px;font-weight:650;cursor:pointer;font-family:var(--sans);font-size:12.5px}
+  .mono,.minitable td.mono,table td.mono{font-family:var(--mono)}
+  /* enhance: severity / TLS / timeline / charts / density */
+  .sevstrip{display:flex;height:6px;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-top:12px;background:var(--panel2)}
+  .sevstrip>i{display:block;height:100%;min-width:0}
+  .sevmeta{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:6px;letter-spacing:.08em;text-transform:uppercase}
+  .tls-strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .tls-cell{display:flex;flex-direction:column;gap:2px;min-width:88px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);text-decoration:none;color:inherit}
+  .tls-cell .tls-n{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+  .tls-cell .tls-d{font-family:var(--mono);font-size:13px;font-weight:650}
+  .tls-ok .tls-d{color:var(--green)} .tls-warn .tls-d{color:var(--yellow)} .tls-bad .tls-d{color:var(--red)} .tls-unk .tls-d{color:var(--muted)}
+  .evt{list-style:none;margin:0;padding:0}
+  .evt li{display:grid;grid-template-columns:96px 1fr auto;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;align-items:baseline}
+  .evt li:last-child{border-bottom:none}
+  .evt .t{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .evt .tag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--yellow)}
+  .evt .tag.bad{color:var(--red)}
+  .evt-empty{color:var(--muted);font-size:12.5px;padding:8px 0;display:block}
+  .empty{padding:18px 8px;border:1px dashed var(--border);border-radius:8px}
+  .empty-t{font-size:13px;font-weight:650}
+  .empty-s{font-size:12px;color:var(--muted);margin:4px 0 10px;max-width:46ch;line-height:1.5}
+  .chart-box{position:relative;height:220px;margin-top:8px}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:820px){.chart-grid{grid-template-columns:1fr}.evt li{grid-template-columns:1fr;gap:4px}}
+  .thr{height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:4px;max-width:120px}
+  .thr>i{display:block;height:100%;border-radius:2px;max-width:100%}
+  #rows tr.st-g td:first-child{box-shadow:inset 3px 0 0 var(--green)}
+  #rows tr.st-y td:first-child{box-shadow:inset 3px 0 0 var(--yellow)}
+  #rows tr.st-r td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+  body.dense .pbody{padding:10px 12px}
+  body.dense td,body.dense th{padding:7px 10px}
+  body.dense .card .n{font-size:18px}
+  body.dense .hero{padding:14px}
+  body.dense .hq{font-size:20px}
+  .comm-strip{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:10px}
+  .comm-strip a{font-family:var(--mono);font-size:11px;color:var(--ember2);text-decoration:none;border-bottom:1px solid rgba(240,163,90,.28)}
+  .comm-strip a:hover{color:var(--ember);border-bottom-color:var(--ember)}
+  .spark-explain{margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--panel2)}
+  .spark-explain summary{cursor:pointer;font-size:13px;font-weight:650;list-style:none;color:var(--text)}
+  .spark-explain summary::-webkit-details-marker{display:none}
+  .spark-explain ol{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px;line-height:1.65}
+  .spark-explain ol b,.spark-explain code{color:var(--text)}
+  .scorewrap{overflow:auto;margin-top:4px}
+  .risk-hi{color:var(--red)} .risk-mid{color:var(--yellow)} .risk-lo{color:var(--green)}
+  .statrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .statpill{border:1px solid var(--border);border-radius:6px;padding:8px 11px;background:var(--panel2);min-width:120px}
+  .statpill .sv{font-family:var(--mono);font-size:16px;font-weight:650}
+  .statpill .sl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:2px}
+  .statpill .ss{font-size:11px;color:var(--muted);margin-top:3px}
+  .status-ribbon{display:flex;height:14px;border:1px solid var(--border);border-radius:3px;overflow:hidden;background:var(--panel2);gap:0}
+  .status-ribbon>i{display:block;height:100%;min-width:2px}
+  .m1check{list-style:none;padding:0;margin:10px 0 0}
+  .m1check li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .m1check li:last-child{border-bottom:none}
+  .m1check .mk{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:3px 7px;border-radius:4px;border:1px solid var(--border);flex:none}
+  .m1check .mk.ok{color:var(--green);border-color:rgba(63,166,106,.4);background:rgba(63,166,106,.1)}
+  .m1check .mk.pend{color:var(--yellow);border-color:rgba(212,160,23,.4);background:rgba(212,160,23,.1)}
+  .reasonchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .reasonchips span{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:3px 7px;border-radius:4px;border:1px solid var(--border);color:var(--muted)}
+  .reasonchips span.bad{color:var(--red);border-color:rgba(214,69,69,.35)}
+  .reasonchips span.warn{color:var(--yellow);border-color:rgba(212,160,23,.35)}
+  .reasonchips span.ok{color:var(--green);border-color:rgba(63,166,106,.35)}
+  .answer-strip{margin-top:14px;padding:12px 14px;border:1px solid rgba(240,163,90,.28);border-radius:8px;background:linear-gradient(135deg,rgba(240,163,90,.08),rgba(20,14,10,.4))}
+  .answer-strip .ans-k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ember2);margin-bottom:8px}
+  .ans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  @media(max-width:820px){.ans-grid{grid-template-columns:1fr 1fr}}
+  .ans-l{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .ans-v{font-family:var(--mono);font-size:15px;font-weight:650;margin-top:3px;line-height:1.25}
+  .ans-s{font-size:11px;color:var(--muted);margin-top:3px}
+  .cmp-pick{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:0 12px 8px 0;cursor:pointer}
+  .cmp-pick input{accent-color:var(--ember)}
+  #compare-hosts{display:flex;flex-wrap:wrap;gap:2px 4px;margin-bottom:8px}
+  .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:rgba(240,163,90,.45) rgba(255,255,255,.04)}
+  .scorewrap{scrollbar-width:thin;scrollbar-color:rgba(240,163,90,.45) rgba(255,255,255,.04)}
+  .usedby{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+  .wtag{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:2px 6px;border-radius:3px;border:1px solid rgba(240,163,90,.28);color:var(--ember2);background:rgba(240,163,90,.07)}
+  .be-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 16px 12px}
+  .be-filters input[type=search],.be-filters select{background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:12.5px;padding:7px 10px}
+  .be-filters input[type=search]{min-width:180px;flex:1;max-width:280px}
+  .be-filters select{min-width:120px}
+  .be-count{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .diag-btn{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:3px;border:1px solid rgba(212,160,23,.4);color:var(--yellow);background:rgba(212,160,23,.08);cursor:pointer;margin-left:6px}
+  .diag-btn.r{border-color:rgba(214,69,69,.4);color:var(--red);background:rgba(214,69,69,.08)}
+  .diag-btn:hover{filter:brightness(1.1)}
+  .diag-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:350;display:none;align-items:flex-end;justify-content:center;padding:16px}
+  .diag-backdrop.open{display:flex}
+  @media(min-width:720px){.diag-backdrop{align-items:center}}
+  .diag-sheet{width:min(520px,100%);max-height:min(86vh,720px);overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:0 24px 60px rgba(0,0,0,.55)}
+  .diag-sheet h3{margin:0 0 6px;font-size:16px;letter-spacing:-.02em}
+  .diag-sheet .dsub{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+  .diag-sheet h4{margin:14px 0 6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .diag-sheet ul{margin:0;padding-left:18px;color:var(--text);font-size:12.5px;line-height:1.55}
+  .diag-sheet pre{margin:0;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,.28);border:1px solid var(--border);font-size:11px;line-height:1.45;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .diag-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .preview-banner{display:none;margin-top:12px;padding:11px 14px;border:1px solid rgba(212,160,23,.35);border-radius:8px;background:rgba(212,160,23,.08);font-size:12.5px;line-height:1.55;color:var(--text)}
+  body.preview-mode .preview-banner{display:block}
+  .preview-banner b{color:var(--yellow)}
+  .preview-banner code{font-family:var(--mono);font-size:11px;color:var(--ember2)}
+  body.preview-mode .durable-only .chart-box,
+  body.preview-mode .durable-only #uptime-rows,
+  body.preview-mode .durable-only #uptime-cards,
+  body.preview-mode .durable-only #sh-inc-stats,
+  body.preview-mode .durable-only #sh-inc-rows,
+  body.preview-mode .durable-only #sethash-events{display:none}
+  body.preview-mode .durable-only .preview-empty{display:block}
+  .preview-empty{display:none;padding:16px 4px;font-size:12.5px;color:var(--muted);line-height:1.55;max-width:54ch}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div class="mast-left">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none"><path d="M34.5 9c1.8 7.3-2.1 11.2-5.7 14.7-3.6 3.5-6.9 6.8-6.9 12.4 0 7.3 5.6 12.9 12.6 12.9 7.4 0 13.1-5.3 13.1-13.3 0-5.4-2.4-10-4.9-13.1.4 2.6-.5 4.7-2.2 5.6-1.9 1-3.7.2-4.2-2-.6-2.8 1.3-5.1.9-9.1-.3-3.6-2.6-7-8.8-10.1z" fill="#1a0f08" fill-opacity=".88"/></svg>
+        </span>
+        <div class="mast-titles">
+          <div class="kicker">Firo · Light-wallet infrastructure</div>
+          <div class="mast-title-row">
+            <h1><span>Firo</span> <span class="grad">Spark</span> <span>Sync Monitor</span></h1>
+            <span class="badge" id="modebadge"><span class="livedot"></span><span id="modebadge-label">Connecting…</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="mastpill" id="mastpill" role="status" aria-label="Live fleet status">
+        <span class="hbdot"></span>
+        <div class="seg"><span class="v" id="mp-state">Checking fleet…</span><span class="k" id="mp-sub">connecting to Firo backends</span></div>
+      </div>
+    </header>
+    <div class="sub">Public health signal for the Electrum backends Firo light wallets sync through — <b>anon-set fetch cost</b>, <b>setHash</b> agreement, tip lag, and TLS expiry. Built for wallet/SDK teams and operators. Privacy-safe probes only.</div>
+    <div id="sevstrip" class="sevstrip" aria-hidden="true"><i style="flex:1;background:var(--muted)"></i></div>
+    <div class="sevmeta" id="sevmeta">waiting for fleet…</div>
+    <details class="spark-explain">
+      <summary>What is Spark sync? · 30s</summary>
+      <ol>
+        <li>Campfire / Stack (and other light wallets) sync Spark through public <b>ElectrumX</b> — they download the full <b>anonymity set</b> (often ~20–32&nbsp;MB), not only chain headers.</li>
+        <li><b>Height OK ≠ Spark OK.</b> A host can be near tip and still serve a slow or divergent set. Watch fetch time, size, and fleet <code>setHash</code> agreement.</li>
+        <li>Prefer backends that match fleet <code>setHash</code>, stay within a few blocks of tip, and keep TLS valid (≥14 days). Use this board’s Spark gate / scorecard — not height alone.</li>
+      </ol>
+      <div class="comm-strip">
+        <a href="https://firo.org/2024/01/18/spark-is-live.html" target="_blank" rel="noopener">Spark is live</a>
+        <a href="https://firo.org/2025/01/01/campfire203.html" target="_blank" rel="noopener">Campfire sync note</a>
+        <a href="https://firo.org/get-firo/download/" target="_blank" rel="noopener">Wallets</a>
+        <a href="https://firo.org/guide/" target="_blank" rel="noopener">Guides</a>
+      </div>
+    </details>
+
+    <div id="connbar" class="connbar" role="status"></div>
+    <div class="preview-banner" id="preview-banner" role="status">
+      <b>Limited preview mode.</b>
+      Tip / Spark id / TLS probes run live. Anon-set figures may be a <b>baked snapshot</b> (not a continuous sweep).
+      Full durable charts, 24h/7d uptime, and live anon-set sweeps run on production:
+      <a href="https://firostatus.com/">firostatus.com</a>.
+    </div>
+
+    <div id="home">
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true" aria-controls="v-overview" data-v="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="v-backends" data-v="backends">Backends</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="v-spark" data-v="spark">Spark health</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="v-developers" data-v="developers">Developers</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="v-roadmap" data-v="roadmap">Roadmap</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="v-about" data-v="about">About</button>
+    </div>
+
+    <!-- OVERVIEW · order: live strip → charts → glance → uptime → scorecard → changes → spark signal → incidents → framing -->
+    <section class="view active" id="v-overview" role="tabpanel" tabindex="0" aria-label="Overview">
+      <div class="hero">
+        <div class="hk">Live fleet · now</div>
+        <div class="chips" id="chips"><span class="chip"><span class="spin" style="width:10px;height:10px"></span> connecting…</span></div>
+        <div class="answer-strip" id="spark-answer" aria-live="polite">
+          <div class="ans-k">Spark sync answer · now</div>
+          <div class="empty-s" style="margin:0">Waiting for fleet probes…</div>
+        </div>
+        <div class="cards" id="cards"></div>
+        <div id="loadmsg" class="loadwrap"><span class="spin"></span><span>Loading live data from the Firo Electrum backends… first probe can take up to ~20–30s.</span></div>
+        <div class="skel-cards" id="loadskel"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="gate" id="ov-gates"></div>
+        <div class="statrow" id="ov-analytics"></div>
+        <div id="sparkwarn"></div>
+        <div class="toolrow" id="ov-tools">
+          <button type="button" class="tbtn pri" data-copy-kind="ci">Copy CI curl</button>
+          <button type="button" class="tbtn" data-copy-kind="badge">Copy badge markdown</button>
+          <a class="tbtn" href="/api/status" target="_blank" rel="noopener">Open /api/status</a>
+          <a class="tbtn" href="/api/history" target="_blank" rel="noopener">Open /api/history</a>
+          <a class="tbtn" href="/spark">Spark health</a>
+          <a class="tbtn" href="/overview#compare">Compare hosts</a>
+          <a class="tbtn" href="/developers">Developers</a>
+        </div>
+      </div>
+
+      <div class="panel durable-only">
+        <div class="phead">
+          <h2>Durable charts · tip lag, fleet mix, anon-set</h2>
+          <span class="h">SQLite · /api/history</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">No durable series in limited preview mode. Session charts at the bottom of Overview still update in-browser. Full tip-lag / fleet / anon-set history runs on <a href="https://firostatus.com/">firostatus.com</a>.</div>
+          <div id="ov-hist-load" class="loadwrap" role="status" aria-live="polite" style="padding:10px 4px 14px"><span class="spin"></span><span>Loading durable charts — cached history first, then freshest samples…</span></div>
+          <div class="chart-grid">
+            <div id="chart-lag-wrap">
+              <div class="chart-lbl">Tip lag by backend (blocks)</div>
+              <div class="chart-box"><canvas id="chart-lag"></canvas></div>
+            </div>
+            <div id="chart-fleet-wrap">
+              <div class="chart-lbl">Fleet health mix (stacked)</div>
+              <div class="chart-box"><canvas id="chart-fleet"></canvas></div>
+            </div>
+          </div>
+          <div id="chart-anonset-ov-wrap" style="margin-top:14px">
+            <div class="chart-lbl">Anon-set fetch (s) · <a class="blink" href="/spark">full Spark tab →</a></div>
+            <div class="chart-box"><canvas id="chart-anonset-ov"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>Fleet at a glance</h2>
+          <a class="h blink" href="/backends">Full backends table →</a>
+        </div>
+        <div class="pbody" style="padding-top:8px;overflow-x:auto">
+          <table class="minitable">
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Lag</th>
+                <th>Spark id</th>
+                <th>Anon-set</th>
+                <th>setHash</th>
+                <th>TLS</th>
+                <th>24h</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ov-glance"><tr><td colspan="8" style="color:var(--muted)">Waiting for probes…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel durable-only">
+        <div class="phead">
+          <h2><span class="tip" tabindex="0">Server history · durable uptime<span class="qi">?</span><span class="tt">From SQLite on the always-on server (<code>/api/history</code>). Strict green % — yellow/red samples count as down. Separate from the browser session charts below. Always available on firostatus.com production.</span></span></h2>
+          <span class="h" id="uptime-meta">24h / 7d · /api/history</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">24h / 7d uptime needs SQLite on the always-on host. In limited preview this panel stays empty — use the live status strip and scorecard, or open <a href="https://firostatus.com/">firostatus.com</a>.</div>
+          <div class="cards" id="uptime-cards" style="margin-top:0">
+            <div class="card e"><div class="n">—</div><div class="l">Fleet 24h</div><div class="s">waiting for /api/history</div></div>
+          </div>
+          <div style="overflow-x:auto;margin-top:12px">
+            <table class="minitable">
+              <thead><tr><th>Backend</th><th>24h</th><th>7d</th><th>Samples (24h)</th></tr></thead>
+              <tbody id="uptime-rows"><tr><td colspan="4" style="color:var(--muted)">Durable history loads when the always-on server is recording…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>Fleet scorecard</h2>
+          <span class="h">decision aid · monitor region</span>
+        </div>
+        <div class="pbody scorewrap">
+          <table class="minitable">
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Tip</th>
+                <th>Spark</th>
+                <th>setHash</th>
+                <th>Anon</th>
+                <th>Uptime 24h</th>
+                <th>TLS</th>
+                <th>Reliable?</th>
+              </tr>
+            </thead>
+            <tbody id="scorecard-rows"><tr><td colspan="8" style="color:var(--muted)">Waiting…</td></tr></tbody>
+          </table>
+          <p class="note" style="margin-top:10px;margin-bottom:0">Reliable = green status · Spark+setHash agree · anon-set not slower than the <b>fleet band</b> (1.75× median, floor 20s) · TLS ≥14d · (24h uptime ≥95% when history exists). Early history + ops-yellow samples can keep Reliable=no even when <code>/api/ci spark_ok</code> PASSes — prefer the Spark gate for sync health. Single probe region · modal consensus.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="compare">
+        <div class="phead">
+          <h2>One-click compare</h2>
+          <span class="h">pick 2–3 hosts</span>
+        </div>
+        <div class="pbody">
+          <div id="compare-hosts"></div>
+          <div class="tbl-scroll" id="compare-out"><div class="empty-s">Waiting for backends…</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>TLS certificate countdown</h2>
+          <span class="h">sorted urgency · yellow &lt;14d · red expired</span>
+        </div>
+        <div class="pbody"><div class="tls-strip" id="tls-strip"></div></div>
+      </div>
+
+      <div class="panel" id="status-timeline-panel">
+        <div class="phead">
+          <h2>Recent status changes</h2>
+          <span class="h" id="tl-meta">watching…</span>
+        </div>
+        <div class="pbody"><ol class="evt" id="status-timeline"></ol></div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2><span class="tip" tabindex="0">Spark sync signal<span class="qi">?</span><span class="tt">Flagship metrics height-only tools miss: full anonymity-set fetch cost and setHash agreement. Production (firostatus.com) measures live continuously.</span></span></h2>
+          <span class="h" id="ov-spark-meta">flagship · anon set + setHash</span>
+        </div>
+        <div class="pbody">
+          <div class="cards" id="ov-spark-cards" style="margin-top:0"></div>
+          <p class="note" style="margin-top:12px;margin-bottom:0">
+            Tip can look fine while Spark sync still stalls on a slow or divergent set.
+            Ranked fetch cards and bandwidth compare: <a class="blink" href="/spark">Spark health</a>.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel durable-only">
+        <div class="phead">
+          <h2>setHash incidents</h2>
+          <span class="h" id="sh-inc-meta">from /api/history</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">Divergence windows are recorded on the always-on server. Live setHash ✓/✗ still shows in the glance table and Backends columns on this preview.</div>
+          <div class="statrow" id="sh-inc-stats"></div>
+          <div id="sh-inc-rows" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <div class="hero" style="margin-top:14px">
+        <div class="hk">Why this board exists</div>
+        <div class="hq">Can wallets complete a Spark sync on these backends?</div>
+        <p class="note" style="margin-top:8px;margin-bottom:0">Height-only checks miss the Spark path. Use the charts and scorecard above for tip lag, anon-set cost, and <code>setHash</code> agreement — then open <a class="blink" href="/spark">Spark health</a> or a backend for detail.</p>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>This browser session · charts &amp; probe RTT</h2>
+          <span class="h">secondary · not durable history</span>
+        </div>
+        <div class="pbody">
+          <div class="grid2" style="margin-top:0">
+            <div>
+              <div class="chart-lbl">Fleet health over session · <span id="histmeta">—</span></div>
+              <div id="chart-health"></div>
+              <div class="legend" style="margin-top:10px">
+                <span><span class="dot" style="background:var(--green)"></span>green</span>
+                <span><span class="dot" style="background:var(--yellow)"></span>yellow</span>
+                <span><span class="dot" style="background:var(--red)"></span>red</span>
+              </div>
+            </div>
+            <div>
+              <div class="chart-lbl">Avg probe RTT · median <span class="mono" id="lat-med">—</span> · <span class="mono" id="lat-minmax">—</span></div>
+              <div id="chart-latency"></div>
+            </div>
+          </div>
+          <div style="margin-top:16px" id="latbars"><div class="loadwrap"><span class="spin"></span><span>Measuring probe RTT…</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BACKENDS -->
+    <section class="view" id="v-backends" role="tabpanel" tabindex="0" aria-label="Backends">
+      <div class="panel">
+        <div class="phead">
+          <h2>Live backend status</h2>
+          <div class="legend">
+            <span><span class="dot" style="background:var(--green)"></span>synced &amp; consistent</span>
+            <span><span class="dot" style="background:var(--yellow)"></span>lag / RTT outlier / Spark mismatch / TLS&lt;14d</span>
+            <span><span class="dot" style="background:var(--red)"></span>unreachable / far behind / TLS expired</span>
+          </div>
+        </div>
+        <div class="be-filters" id="be-filters">
+          <input type="search" id="be-search" placeholder="Search name, host, operator..." autocomplete="off" aria-label="Search backends" />
+          <select id="be-status" aria-label="Filter by status">
+            <option value="all">All statuses</option>
+            <option value="green">Healthy</option>
+            <option value="yellow">Degraded</option>
+            <option value="red">Critical</option>
+          </select>
+          <select id="be-wallet" aria-label="Filter by wallet">
+            <option value="all">All wallets</option>
+            <option value="Campfire">Campfire</option>
+            <option value="Stack Wallet">Stack Wallet</option>
+            <option value="Electrum-Firo">Electrum-Firo</option>
+          </select>
+          <button type="button" class="tbtn" id="toggle-sec-cols" aria-pressed="false">Show RTT &amp; trend</button>
+          <span class="be-count" id="be-count">Sorted critical → healthy</span>
+        </div>
+        <div class="tblwrap" id="backends-wrap"><table>
+          <thead><tr>
+            <th>Backend</th>
+            <th>Used by</th>
+            <th>Operator</th>
+            <th><span class="tip" tabindex="0">Height<span class="qi">?</span><span class="tt">Chain tip height this backend reports, via <code>blockchain.headers.subscribe</code>.</span></span></th>
+            <th><span class="tip" tabindex="0">Lag<span class="qi">?</span><span class="tt">Blocks behind the fleet reference tip (highest height at least two backends agree on). 0 means fully synced.</span></span></th>
+            <th><span class="tip" tabindex="0">Anon-set<span class="qi">?</span><span class="tt">Full Spark anonymity-set fetch time and size from the latest measurement (live on firostatus.com / always-on).</span></span></th>
+            <th><span class="tip" tabindex="0">TLS<span class="qi">?</span><span class="tt">Days left on the peer TLS certificate. &lt;14 days → yellow · expired → red.</span></span></th>
+            <th><span class="tip" tabindex="0">setHash<span class="qi">?</span><span class="tt">Anon-set fingerprint match vs fleet consensus.</span></span></th>
+            <th><span class="tip" tabindex="0">Uptime 24h<span class="qi">?</span><span class="tt">Strict green % from durable SQLite history (<code>/api/history</code>) on the always-on server.</span></span></th>
+            <th><span class="tip" tabindex="0">Uptime 7d<span class="qi">?</span><span class="tt">Strict green % over 7 days from SQLite history.</span></span></th>
+            <th class="col-sec"><span class="tip" tabindex="0">Probe RTT<span class="qi">?</span><span class="tt">Round trip for the light probe (TLS + tip) from this monitor. Secondary to Spark setHash and lag.</span></span></th>
+            <th class="col-sec"><span class="tip" tabindex="0">Trend<span class="qi">?</span><span class="tt">This backend's probe RTT across polls this browser session.</span></span></th>
+            <th><span class="tip" tabindex="0">Spark id<span class="qi">?</span><span class="tt">Active Spark coin-group id from <code>spark.getsparklatestcoinid</code>, cross-checked fleet-wide. ✗ = differs from consensus.</span></span></th>
+            <th><span class="tip" tabindex="0">Status<span class="qi">?</span><span class="tt">green = tip fresh, Spark id + setHash match, TLS OK, probe RTT not a fleet outlier · yellow = tip lag / RTT outlier vs fleet / Spark mismatch / TLS &lt;14d · red = unreachable, far behind, or TLS expired. Yellow does not fail /api/ci spark_ok by itself.</span></span></th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="14" style="color:var(--muted);padding:30px 14px"><span class="spin" style="width:11px;height:11px"></span> Probing live Firo servers…</td></tr></tbody>
+        </table></div>
+      </div>
+      <div class="note" id="foot"></div>
+    </section>
+
+    <div class="diag-backdrop" id="diag-backdrop" role="dialog" aria-modal="true" aria-labelledby="diag-title">
+      <div class="diag-sheet" id="diag-sheet"></div>
+    </div>
+
+    <!-- SPARK HEALTH -->
+    <section class="view" id="v-spark" role="tabpanel" tabindex="0" aria-label="Spark health">
+      <div class="hero">
+        <div class="hk">Anonymity-set fetch health</div>
+        <div class="hq">The Spark signal height only tools miss</div>
+        <div class="sub" style="margin-top:8px">Each public backend’s active Spark anonymity set is fully downloaded so the community can see fetch time, size, and whether <code>setHash</code> matches across the fleet. Serve times are measured from <b>this monitor’s region</b>.</div>
+        <div id="sparksnap" style="margin-top:10px"></div>
+        <div class="cards" id="spark-cards-top"></div>
+      </div>
+      <div class="statrow" id="spark-analytics" style="margin-top:14px"></div>
+
+      <div class="panel durable-only" id="chart-anonset-wrap">
+        <div class="phead">
+          <h2>Anon-set fetch time over history</h2>
+          <span class="h chart-slow-hint" data-anon-slow-hint>seconds · dashed = fleet slow band</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">Time-series history needs always-on SQLite. Ranking cards below still use the latest snapshot / live merge on this preview.</div>
+          <div class="chart-box"><canvas id="chart-anonset"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel durable-only" id="chart-growth-wrap">
+        <div class="phead">
+          <h2>Anon-set growth · coins &amp; MB</h2>
+          <span class="h">fleet median over history</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">Growth charts need multi-day samples from the always-on history on firostatus.com.</div>
+          <div class="chart-box"><canvas id="chart-growth"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel durable-only">
+        <div class="phead">
+          <h2>setHash divergence windows</h2>
+          <span class="h">from durable history</span>
+        </div>
+        <div class="pbody">
+          <div class="preview-empty">Incident windows are always-on only. Per-backend setHash ✓/✗ is still live in the ranking table.</div>
+          <div id="sethash-events"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead">
+          <h2>Fetch ranking (fastest → slowest)</h2>
+          <button type="button" class="tbtn" id="copy-sethash">Copy consensus setHash</button>
+        </div>
+        <div class="pbody" style="padding-top:8px;overflow-x:auto">
+          <table class="minitable">
+            <thead><tr><th>#</th><th>Backend</th><th>Fetch</th><th>Size</th><th>Coins</th><th>setHash</th></tr></thead>
+            <tbody id="spark-rank"><tr><td colspan="6" style="color:var(--muted)">Waiting…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="phead"><h2><span class="tip" tabindex="0">Per-backend anon-set fetch<span class="qi">?</span><span class="tt">Full download of each backend's Spark anonymity set for the active coin group (<code>spark.getsparkanonymityset</code>): time, coins, MB, and setHash. This is the real mobile-sync bottleneck.</span></span></h2><span class="h" id="anonmeta">—</span></div>
+        <div class="pbody"><div class="spark-cards" id="anoncards"></div></div>
+      </div>
+      <div class="panel">
+        <div class="phead"><h2><span class="tip" tabindex="0">Same set, different bandwidth<span class="qi">?</span><span class="tt">Backends can serve the same setHash at different byte sizes. Useful when comparing operator efficiency for mobile sync.</span></span></h2><span class="h">bytes per full fetch · identical setHash</span></div>
+        <div class="pbody" id="bwcompare"><div style="color:var(--muted);font-size:11px">collecting…</div></div>
+      </div>
+      <div class="note">
+        <b>Why this matters:</b> height-only trackers miss the Spark path. The active coin group is often
+        <b>tens of thousands of coins / tens of MB</b> and can take <b>15 to 40&nbsp;s+</b> to serve.
+        A backend can be green on tip and still stall mobile Spark sync. Fleet-wide <code>setHash</code> checks also catch
+        a host serving a different or stale set. On always-on hosts, anon-set sweeps run continuously. Live board: <a class="blink" href="https://firostatus.com/">firostatus.com</a> (see Roadmap for remaining M1 public gates).
+      </div>
+    </section>
+
+    <!-- ROADMAP -->
+    <section class="view" id="v-roadmap" role="tabpanel" tabindex="0" aria-label="Roadmap">
+      <div class="hero">
+        <div class="hk">Delivery plan · FCS funded</div>
+        <div class="hq">Ship always-on production, then ops tools</div>
+        <div class="sub" style="margin-top:8px">Firo Crowdfunding System: <b>$2,000</b> (in FIRO), 50/50 across two milestones — paid after verification, not upfront. Proposal is funded and WIP. <b>Live:</b> <a class="blink" href="https://firostatus.com/" target="_blank" rel="noopener">firostatus.com</a> · MIT source on <a class="blink" href="https://gitlab.com/panagiotispollis/firostatus" target="_blank" rel="noopener">GitLab</a> · JSON API + SQLite history. <b>M2</b> starts after M1 verification / first installment (alerting, operator self-check, upstream, handover).</div>
+        <div class="timeline" style="margin-top:18px">
+          <div class="tl done"><div class="w">Funded</div><div class="d">Proposal accepted · WIP</div></div>
+          <div class="tl done"><div class="w">Product</div><div class="d">Always-on probes + API + history</div></div>
+          <div class="tl done"><div class="w">Domain · forum</div><div class="d">firostatus.com · launch post</div></div>
+          <div class="tl"><div class="w">Next</div><div class="d">MIT repo · then M2</div></div>
+        </div>
+      </div>
+
+      <div class="cards three" style="margin-top:16px">
+        <div class="card e"><div class="n">$2,000</div><div class="l">Total (in FIRO)</div><div class="s">50 / 50 · verify then pay</div></div>
+        <div class="card c"><div class="n">~3 wks</div><div class="l">Work duration</div><div class="s">within 1 month of funding</div></div>
+        <div class="card g"><div class="n">MIT</div><div class="l">License</div><div class="s">GitLab public</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px"><div class="pbody prose">
+        <h3>Where delivery stands</h3>
+        <p>Live probes, Spark setHash health, durable history, and the public JSON API run on <b>firostatus.com</b> (always-on Node). Domain + HTTPS, forum launch, and MIT source (<a class="blink" href="https://gitlab.com/panagiotispollis/firostatus" target="_blank" rel="noopener">GitLab</a>) are live. Milestone 2 deliverables stay unchecked until after M1 verification / first installment.</p>
+        <h3>M1 acceptance checklist · live</h3>
+        <p style="margin-bottom:0">CFC verifies product signals here plus the public gates. Prefer <code>/api/ci</code> <b>spark_ok</b> over green-count / early uptime %.</p>
+        <ul class="m1check" id="m1-checklist">
+          <li><span class="mk pend">…</span><div><b>anonset_source = live</b><div class="host">Continuous always-on sweeps</div></div></li>
+          <li><span class="mk pend">…</span><div><b>Anon-set fields populated</b><div class="host">ms / MB / setHash on endpoints</div></div></li>
+          <li><span class="mk pend">…</span><div><b>/api/history recording</b><div class="host">sample_count + uptime %</div></div></li>
+          <li><span class="mk ok">ok</span><div><b>Own domain + HTTPS</b><div class="host">firostatus.com · always-on</div></div></li>
+          <li><span class="mk ok">ok</span><div><b>Public MIT source</b><div class="host">gitlab.com/panagiotispollis/firostatus</div></div></li>
+          <li><span class="mk ok">ok</span><div><b>Forum launch write-up</b><div class="host">live URL + API curls</div></div></li>
+        </ul>
+        <pre id="ex-m1-verify" style="margin-top:12px"># Verifier cheatsheet (pass when live)
+curl -sS ORIGIN/api/status | jq '{anonset_source, spark_ok:(.endpoints|map(select(.spark_consistent==false or (.anonset.consistent==false)))|length==0), sample_hint:(.endpoints|map(.anonset.ms)|map(select(.!=null))|length)}'
+curl -sS ORIGIN/api/history?hours=24 | jq '{sample_count, fleet_pct_24h:.uptime.fleet_pct_24h, fleet_n:(.fleet|length)}'
+curl -sS -f ORIGIN/api/ci | jq '{ok,spark_ok,max_lag,reasons}'</pre>
+      </div></div>
+
+      <div class="ms m1">
+        <div class="mh">
+          <div><span class="mt">Milestone 1 · Always-on production</span> <span class="when">· Week 1 · $200 hosting line · paid after verify</span></div>
+          <span class="fund">$1,000</span>
+        </div>
+        <ul class="dl">
+          <li>Public MIT source repo with README, methodology, and contribution guide</li>
+          <li class="done">Own domain + HTTPS always-on hosting (<code>firostatus.com</code>)</li>
+          <li class="done">Production dashboard: reachability, height, tip lag, probe RTT, version, TLS</li>
+          <li class="done">Spark coin group consistency cross-checked across the public fleet</li>
+          <li class="done">Live anon-set fetch health: time, size/coins, setHash consistency</li>
+          <li class="done">Durable history (SQLite) with 24h / 7d uptime % (strict green; interpret with <code>/api/ci</code>)</li>
+          <li class="done">Public JSON API (<code>/api/status</code>, <code>/api/docs</code>, <code>/api/history</code>, <code>/api/health</code>) + curl / CI examples</li>
+          <li class="done">Firo forum launch write-up for the community</li>
+        </ul>
+        <div class="acc"><b>Acceptance:</b> live public URL on own domain; repo public under MIT; forum launch; API returning real fleet data; anon-set fetch-health populated; continuous history recording.</div>
+      </div>
+
+      <div class="ms m2">
+        <div class="mh">
+          <div><span class="mt">Milestone 2 · Ops, decision tools &amp; upstream</span> <span class="when">· after M1 verify / first installment</span></div>
+          <span class="fund">$1,000</span>
+        </div>
+        <ul class="dl">
+          <li>Per backend detail pages with durable history charts (24h / 7d; 30d when history accumulates)</li>
+          <li>Anon set growth tracker (coins, MB, fetch time over time)</li>
+          <li>Opt in alerting (Telegram / Discord / webhook) for red status, Spark / setHash mismatch, or lag spikes</li>
+          <li>Operator self service: add or verify your server + privacy-safe self check page</li>
+          <li>Embed kits / README + status-page snippets for live <code>/api/badge</code> + CI curls (Developers tab)</li>
+          <li><b>Wallet scorecard:</b> ranked Reliable? table (Spark · setHash · fleet slow band · tip · uptime · TLS)</li>
+          <li><b>One-click compare:</b> side-by-side Spark id, setHash, fetch MB/ms, lag, TLS across 2–3 backends</li>
+          <li>Public Spark incident / transparency log (setHash divergence windows)</li>
+          <li><b>Developers docs:</b> ElectrumX→field map, spark_ok-first CI, deep links, setHash pin curls</li>
+          <li>At least one upstream contribution to Firo wallet or docs (e.g. Spark health check)</li>
+          <li>Handover runbook and 6 to 12 month uptime commitment</li>
+        </ul>
+        <div class="acc"><b>Acceptance:</b> M2 scoped after first installment — alerting, operator self-check, decision surfaces, upstream PR, and handover. Items above stay open until delivered and verified.</div>
+      </div>
+
+      <div class="panel"><div class="pbody">
+        <div class="phead" style="padding:0 0 10px;border-bottom:1px solid var(--border)"><h2>Budget · $2,000</h2><span class="h">paid in FIRO after milestone verification</span></div>
+        <div style="margin-top:8px">
+          <div class="kv"><span class="k">M1 · production engineering + deploy</span><span class="mono">$800</span></div>
+          <div class="kv"><span class="k">M1 · domain + VPS hosting (12 months)</span><span class="mono">$200</span></div>
+          <div class="kv"><span class="k">M2 · ops, decision tools, alerting, upstream</span><span class="mono">$1,000</span></div>
+          <div class="kv"><span class="k" style="color:var(--text)"><b>Total</b></span><span class="mono" style="color:var(--ember2)"><b>$2,000</b></span></div>
+        </div>
+      </div></div>
+    </section>
+
+    <!-- DEVELOPERS -->
+    <section class="view" id="v-developers" role="tabpanel" tabindex="0" aria-label="Developers">
+      <div class="hero">
+        <div class="hk">For Firo developers</div>
+        <div class="hq">Machine readable Spark Electrum fleet health</div>
+        <p class="sub" style="margin-top:8px;border-top:none;padding-top:0">Firo light wallets sync Spark through public Electrumx backends. A host can look fine on height and still serve a slow or inconsistent anonymity set. This page documents the public JSON feed that reports tip freshness, Spark coin group agreement, <code>setHash</code> consistency, and anon set fetch cost across the curated fleet.</p>
+      </div>
+
+      <div class="panel"><div class="pbody prose">
+        <h3>Who this is for</h3>
+        <p><b>Primary:</b> wallet / SDK / mobile teams reviewing default Electrum hosts, and Electrumx operators watching Spark serve cost. <b>Secondary:</b> public transparency when Spark sync stalls. The dashboard and the JSON feed show the same probe data.</p>
+
+        <div class="call cyan">
+          <b>vs a wallet Electrum SDK:</b> an SDK (or app) talks to <i>one</i> host and does real Spark sync for the user.
+          This monitor watches the <i>curated public fleet</i> — tip lag, coin-group agreement, full anon-set fetch ms/MB, and <code>setHash</code> consistency —
+          so teams do not each re-download ~18–32&nbsp;MB just to compare backends. <b>Complement, not a replacement.</b>
+          Not an in-wallet “pick a server” UI.
+        </div>
+
+        <h3>Where this sits in the Firo stack</h3>
+        <table class="ftable">
+          <thead><tr><th>Layer</th><th>Role</th><th>Typical use</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Full node</td>
+              <td>Authoritative chain and Spark state</td>
+              <td>Required behind every Electrumx instance</td>
+            </tr>
+            <tr>
+              <td>Electrumx (Spark)</td>
+              <td>Indexed light wallet protocol for Firo Spark</td>
+              <td>What light and mobile wallets sync through in production</td>
+            </tr>
+            <tr>
+              <td>Wallet / SDK / app client</td>
+              <td>Talks to a chosen Electrum host</td>
+              <td>Real Spark sync, coin group fetch, user facing wallet logic</td>
+            </tr>
+            <tr>
+              <td>This monitor</td>
+              <td>Continuous probes across the curated public fleet</td>
+              <td>Alerts, CI, default list review, incident triage, status pages</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="call"><b>Electrum clients query one host. This API watches the fleet.</b> Use it when the community needs a shared answer: which public backends agree on Spark state, and how costly a full anon set fetch is right now.</div>
+
+        <div class="toolrow" style="margin:0 0 16px">
+          <button type="button" class="tbtn pri" data-copy-kind="status">Copy status curl</button>
+          <button type="button" class="tbtn" data-copy-kind="ci">Copy CI curl</button>
+          <button type="button" class="tbtn" data-copy-kind="badge">Copy badge markdown</button>
+          <a class="tbtn" href="/api/docs" target="_blank" rel="noopener">Open /api/docs</a>
+        </div>
+        <div id="live-ci" class="call" style="margin-top:0">Loading live <code>/api/ci</code> gate…</div>
+        <div class="statrow" id="dev-analytics" style="margin-top:12px"></div>
+        <pre id="ex-history" style="margin-top:12px">curl -sS 'ORIGIN/api/history?hours=24&amp;limit=200' \
+  | jq '{storage, db, sample_count, recording_since, uptime_note,
+         uptime:.uptime.fleet_pct_24h,
+         fleet_n:(.fleet|length), events:(.events.sethash|length)}'</pre>
+        <p class="note" style="margin-top:8px">Verifier curls also live in <a class="blink" href="/docs/VERIFY.md" target="_blank" rel="noopener"><code>/docs/VERIFY.md</code></a>. Prefer <code>/api/ci</code> <b>spark_ok</b> over early uptime %.</p>
+
+        <h3>Public JSON routes</h3>
+        <div class="epgrid">
+          <div class="epcard"><a class="eppath" href="/api/status" target="_blank" rel="noopener">GET /api/status</a><div class="epdesc">Full fleet snapshot: lag, Spark consistency, anon set health, <code>status_reasons</code>, summary, and a <code>meta</code> block.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/spark" target="_blank" rel="noopener">GET /api/spark</a><div class="epdesc">Compact Spark consensus for docs and light polling. Includes inconsistent endpoint ids without ranking hosts.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/ci" target="_blank" rel="noopener">GET /api/ci</a><div class="epdesc">Pass/fail JSON. HTTP 200 when <code>ok</code> (Spark healthy <b>and</b> tip lag ≤2). Prefer <code>spark_ok</code> for Spark-only gates. When <code>ok</code>, <code>notes</code> may explain ops-yellow hosts.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/docs" target="_blank" rel="noopener">GET /api/docs</a><div class="epdesc">Machine readable field glossary, probe list, deep links, and example uses.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/badge" target="_blank" rel="noopener">GET /api/badge</a><div class="epdesc">SVG badge for READMEs. Prefers <b>spark ok</b> over green-count (yellow ops hosts do not imply Spark failure).</div></div>
+          <div class="epcard"><a class="eppath" href="/api/history" target="_blank" rel="noopener">GET /api/history</a><div class="epdesc">Durable SQLite: points, <code>fleet</code> series, <code>events.sethash</code>, 24h/7d uptime % (strict green; not a wallet SLA). Query <code>?hours=&amp;id=&amp;limit=</code>.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/health" target="_blank" rel="noopener">GET /api/health</a><div class="epdesc">Liveness: Node uptime, last snapshot summary, sqlite <code>sample_count</code>. No filesystem paths.</div></div>
+        </div>
+
+        <h3>Fields that matter in <code>/api/status</code></h3>
+        <table class="ftable">
+          <thead><tr><th>Field</th><th>Meaning for a developer</th></tr></thead>
+          <tbody>
+            <tr><td>reference</td><td>Majority safe fleet tip. Highest height that at least two backends agree on, so one forked host cannot skew lag for everyone.</td></tr>
+            <tr><td>spark_consensus</td><td>Modal active Spark coin group id from <code>spark.getsparklatestcoinid</code>.</td></tr>
+            <tr><td>spark_sethash_consensus</td><td>Modal anon set <code>setHash</code> across measured backends.</td></tr>
+            <tr><td>endpoints[].lag</td><td>Blocks behind <code>reference</code>. Primary freshness signal.</td></tr>
+            <tr><td>endpoints[].spark_consistent</td><td><code>true</code> when this host’s coin group matches fleet consensus.</td></tr>
+            <tr><td>endpoints[].anonset.ms</td><td>Wall time to fully download the active anon set from this monitor’s region.</td></tr>
+            <tr><td>endpoints[].anonset.mb / coins</td><td>Bytes on the wire and coin count for that full fetch.</td></tr>
+            <tr><td>endpoints[].anonset.setHash / consistent</td><td>Identity of the set and whether it matches fleet <code>setHash</code> consensus.</td></tr>
+            <tr><td>endpoints[].latency_ms</td><td>Light probe RTT from this monitor only. Secondary. Not user device latency and not a ranking score.</td></tr>
+            <tr><td>endpoints[].status</td><td><code>green</code> / <code>yellow</code> / <code>red</code> from tip lag, Spark/setHash consistency, TLS, and <b>fleet-relative</b> probe RTT (outlier vs median — not a fixed 3s wall).</td></tr>
+            <tr><td>endpoints[].status_reasons</td><td>Human-readable why the host is yellow/red (e.g. tip lag, RTT outlier, setHash mismatch, TLS &lt;14d).</td></tr>
+            <tr><td>stats.probe_rtt_yellow_threshold_ms</td><td>Current RTT yellow band: <code>max(5000, 2.5× median probe RTT)</code>.</td></tr>
+            <tr><td>anonset_source</td><td><code>live</code> on <a href="https://firostatus.com/">firostatus.com</a> (continuous always-on sweeps).</td></tr>
+            <tr><td>tls_valid_to / tls_days_left</td><td>Peer TLS certificate expiry and whole days remaining (observed; CA trust not enforced).</td></tr>
+            <tr><td>anonset_checked_at</td><td>When the last completed full anon-set sweep finished. May lag <code>checked_at</code> during a long sweep.</td></tr>
+            <tr><td>meta</td><td>Purpose notes, probe methods, status rules, and height-only vs Spark field map.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Height only checks vs Spark path</h3>
+        <table class="ftable">
+          <thead><tr><th>What you look at</th><th>What you learn</th><th>What you miss</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>ok, height, lag</td><td>Host answers and is near tip</td>
+              <td>Slow or divergent Spark anon set (the usual mobile sync stall)</td>
+            </tr>
+            <tr>
+              <td>spark_latest_coin_id, spark_consistent</td>
+              <td>Coin group agreement across the fleet</td>
+              <td>Fetch cost and byte size of the set</td>
+            </tr>
+            <tr>
+              <td>anonset.ms, mb, setHash, consistent</td>
+              <td>Whether a wallet can finish a Spark sync on this host, and whether the set matches peers</td>
+              <td>Nothing height only tools already cover</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Concrete jobs this API supports</h3>
+        <ol>
+          <li><b>CI or ops alert.</b> Fail a job or page someone when any default host has <code>spark_consistent === false</code> or <code>anonset.consistent === false</code>.</li>
+          <li><b>Incident triage.</b> Separate an app bug from an Electrum host that is serving a slow or divergent Spark set.</li>
+          <li><b>Default list review.</b> Compare <code>anonset.mb</code> and <code>anonset.ms</code> across operators before publishing recommended backends (same <code>setHash</code> can still mean different bytes on the wire).</li>
+          <li><b>Docs transparency.</b> Embed <code>/api/badge</code> or poll <code>/api/ci</code> from a status page.</li>
+        </ol>
+
+        <h3>Example: list Spark inconsistent hosts</h3>
+        <pre id="ex-status">curl -sS ORIGIN/api/status \
+  | jq '[.endpoints[]
+      | select(.spark_consistent == false
+          or (.anonset != null and .anonset.consistent == false))
+      | {name, lag, spark_consistent, anonset}]'</pre>
+
+        <h3>Example: spark_ok-first CI (recommended for Spark sync)</h3>
+        <pre id="ex-ci-spark"># Prefer spark_ok for Spark path health (tip lag / ops-yellow alone should not fail Spark CI)
+curl -sS ORIGIN/api/ci | jq -e '.spark_ok == true'
+# Strict tip+Spark gate (HTTP 503 when ok=false); notes explain yellow when ok=true:
+curl -sS -f ORIGIN/api/ci | jq '{ok, spark_ok, max_lag, yellow, notes, reasons}'</pre>
+        <p><code>ok</code> requires <code>spark_ok</code> and <code>max_lag ≤ 2</code>. Mild lag alone can yield <code>spark_ok: true</code> with <code>ok: false</code>. Ops-yellow (RTT outlier, TLS &lt;14d) can leave <code>ok: true</code> with non-empty <code>notes</code>. Use <code>spark_ok</code> for Spark-only gates; use <code>-f</code> + <code>ok</code> when tip freshness is also required.</p>
+
+        <h3>Example: compact consensus poll</h3>
+        <pre id="ex-spark">curl -sS ORIGIN/api/spark \
+  | jq '{checked_at, spark_consensus, spark_sethash_consensus, summary, inconsistent}'</pre>
+
+        <h3>Pin / audit fleet setHash</h3>
+        <pre id="ex-sethash"># Consensus fingerprint
+curl -sS ORIGIN/api/status | jq -r '.spark_sethash_consensus'
+# Hosts that disagree
+curl -sS ORIGIN/api/status | jq '[.endpoints[] | select(.anonset.consistent==false) | {id,name,setHash:.anonset.setHash}]'
+# Divergence windows (always-on)
+curl -sS 'ORIGIN/api/history?hours=168' | jq '.events.sethash[-5:]'</pre>
+
+        <h3>Embed kit</h3>
+        <pre id="ex-embed">&lt;!-- README / status page --&gt;
+![Spark fleet](ORIGIN/api/badge)
+
+&lt;!-- Deep links (path routes) --&gt;
+Overview: ORIGIN/overview
+Backends: ORIGIN/backends
+Spark health: ORIGIN/spark
+Backend detail: ORIGIN/backend/mathnodes
+Developers: ORIGIN/developers
+Health JSON: ORIGIN/api/health</pre>
+        <p class="note">Registry ids and deep links also ship in <code>/api/docs</code> (<code>registry</code>, <code>deep_links</code>). Production origin: <code>https://firostatus.com</code>.</p>
+
+        <h3>ElectrumX method → JSON field</h3>
+        <table class="ftable">
+          <thead><tr><th>Electrum method</th><th>Monitor fields</th></tr></thead>
+          <tbody>
+            <tr><td><code>server.version</code></td><td><code>version</code>, <code>tls_valid_to</code>, <code>tls_days_left</code></td></tr>
+            <tr><td><code>blockchain.headers.subscribe</code></td><td><code>height</code>, <code>lag</code></td></tr>
+            <tr><td><code>spark.getsparklatestcoinid</code></td><td><code>spark_latest_coin_id</code>, <code>spark_consistent</code>, <code>spark_consensus</code></td></tr>
+            <tr><td><code>spark.getsparkanonymityset</code></td><td><code>anonset.ms/mb/coins/setHash/consistent</code>, <code>spark_sethash_consensus</code></td></tr>
+          </tbody>
+        </table>
+
+        <h3>Privacy and probe surface</h3>
+        <p>Probes are public Electrum methods only: <code>server.version</code>, <code>blockchain.headers.subscribe</code>, <code>spark.getsparklatestcoinid</code>, and <code>spark.getsparkanonymityset</code>. No addresses, keys, transactions, or wallet traffic are sent or stored. CORS is open (<code>*</code>) so browser tools and dashboards can read the feed.</p>
+
+        <h3>Not for</h3>
+        <ul>
+          <li>In-wallet server picker / user-device RTT ranking</li>
+          <li>Authoritative chain state (full nodes remain authoritative)</li>
+          <li>Replacing Campfire / Stack / Electrum-Firo Spark sync itself</li>
+        </ul>
+
+        <p style="margin-bottom:0">Start here: <a href="/api/docs" target="_blank" rel="noopener"><code>/api/docs</code></a> · <a href="/api/ci" target="_blank" rel="noopener"><code>/api/ci</code></a> · <a href="/api/status" target="_blank" rel="noopener"><code>/api/status</code></a> · <a href="/docs/VERIFY.md" target="_blank" rel="noopener"><code>/docs/VERIFY.md</code></a></p>
+      </div></div>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="view" id="v-about" role="tabpanel" tabindex="0" aria-label="About">
+      <div class="panel"><div class="pbody">
+        <div class="statrow" id="about-fleet-now"></div>
+      </div></div>
+      <div class="panel"><div class="pbody prose">
+        <h3>What this is</h3>
+        <p><b>FiroStatus</b> (<a class="blink" href="https://firostatus.com/">firostatus.com</a>) is a community health board and JSON feed for the public Firo Electrum backends that light and mobile wallets depend on. Flagship focus: <b>Spark sync health</b> (anon-set fetch and <code>setHash</code>), plus tip lag and TLS. The dashboard and the API show the same probe data. See <a class="blink" href="/developers">Developers</a> for integration details.</p>
+        <h3>How to read the Overview in 30 seconds</h3>
+        <ol>
+          <li><b>Spark / tip gates</b> — prefer <code>/api/ci</code> <b>spark_ok</b> (and <b>ok</b>) over green-count alone.</li>
+          <li><b>Durable charts</b> + <b>fleet at a glance</b> — lag, fleet mix, anon-set cost, who agrees on setHash.</li>
+          <li><b>Scorecard / compare / diagnose</b> — decision aids; early history can keep “Reliable?” false even when Spark PASSes.</li>
+        </ol>
+        <h3>What it checks (privacy safe)</h3>
+        <ul>
+          <li><code>server.version</code>: reachability, TLS, software version, cert expiry</li>
+          <li><code>blockchain.headers.subscribe</code>: chain height and lag vs fleet reference tip</li>
+          <li><code>spark.getsparklatestcoinid</code>: active Spark coin group id, cross-checked across backends</li>
+          <li><code>spark.getsparkanonymityset</code>: full anon-set fetch time, size, and <code>setHash</code> consistency</li>
+        </ul>
+        <p>No addresses, keys, transactions, or wallet data are sent or stored. The reference tip is the highest height at least two backends agree on. Spark / setHash consensus is the modal value across the fleet.</p>
+        <h3>Status model</h3>
+        <ul>
+          <li><span class="ok">green</span>: reachable, ≤2 blocks behind, Spark id + setHash match fleet, TLS ≥14 days, probe RTT <b>not a fleet outlier</b> (band = max(5s, 2.5× median RTT))</li>
+          <li><span class="warnc">yellow</span>: tip lag &gt;2, RTT outlier, missing Spark id, coin id / <code>setHash</code> mismatch, or TLS &lt;14d — see <code>status_reasons</code>. Yellow is ops; <code>spark_ok</code> can still PASS</li>
+          <li><span class="bad">red</span>: unreachable, more than 100 blocks behind, or TLS certificate expired</li>
+        </ul>
+        <h3>Production vs preview</h3>
+        <table class="ftable">
+          <thead><tr><th>Surface</th><th>Production · firostatus.com</th><th>Limited preview</th></tr></thead>
+          <tbody>
+            <tr><td>Light tip probes</td><td>Live</td><td>Live</td></tr>
+            <tr><td>Anon-set sweeps</td><td><code>anonset_source: live</code></td><td>Often baked <code>snapshot</code></td></tr>
+            <tr><td><code>/api/history</code> + uptime %</td><td>Yes (SQLite)</td><td>No / incomplete</td></tr>
+            <tr><td>M1 public gates</td><td>Domain + forum + MIT GitLab source live</td><td>Verify via /api/ci + VERIFY.md</td></tr>
+          </tbody>
+        </table>
+        <h3>Privacy statement</h3>
+        <p>Probes are public Electrum methods only. <b>No addresses, keys, transactions, wallet traffic, or personal data</b> are collected. This board is ops health for the curated fleet — not a wallet and not a privacy guarantee for funds.</p>
+        <h3>Scoring (short)</h3>
+        <p>Reference tip = highest height ≥2 backends agree on. Uptime = strict green % (yellow/red count as down) — <b>not a wallet-availability SLA</b>; interpret with <code>/api/ci</code>. Anon-set ms/MB are from <b>this monitor’s single region</b>. Full write-up: <a class="blink" href="/docs/METHODOLOGY.md" target="_blank" rel="noopener"><code>/docs/METHODOLOGY.md</code></a> · verifier curls: <a class="blink" href="/docs/VERIFY.md" target="_blank" rel="noopener"><code>/docs/VERIFY.md</code></a>.</p>
+        <h3>Funding</h3>
+        <p>FCS proposal by panagot — ~$2,000 (in FIRO), paid after verification.
+          <a class="blink" href="https://funding.firo.org/proposals/zz-noimg3-panagot" target="_blank" rel="noopener">Funding page</a> ·
+          <a class="blink" href="https://forum.firo.org/t/fcs-proposal-zz-noimg3/4350" target="_blank" rel="noopener">Forum thread</a> ·
+          <a class="blink" href="/roadmap">Roadmap</a>.</p>
+        <p style="margin-top:14px">Public JSON: <a href="/api/status">/api/status</a> · <a href="/api/ci">/api/ci</a> · <a href="/api/history">/api/history</a> · <a href="/api/health">/api/health</a> · <a href="/api/docs">/api/docs</a> · badge: <a href="/api/badge">/api/badge</a> <img src="/api/badge" alt="firo spark fleet health badge" style="vertical-align:middle;margin-left:6px;height:20px"/></p>
+      </div></div>
+    </section>
+    </div><!-- /home -->
+
+    <section id="detail" style="display:none"></section>
+
+    <footer class="sitefoot">
+      <div class="sf-left">
+        <span class="flame" style="width:18px;height:18px;border-radius:5px"></span>
+        <div>
+          <div class="sf-t">Firo Spark Sync Monitor</div>
+          <div class="sf-s">Privacy-safe probes only · MIT · firostatus.com · built by panagot</div>
+        </div>
+      </div>
+      <nav class="sf-links">
+        <a href="/overview">Overview</a>
+        <a href="/spark">Spark health</a>
+        <a href="/developers">Developers</a>
+        <a href="/about">About</a>
+        <a href="/api/status" target="_blank" rel="noopener">JSON API</a>
+        <a href="/api/docs" target="_blank" rel="noopener">API docs</a>
+        <a href="https://funding.firo.org/proposals/zz-noimg3-panagot" target="_blank" rel="noopener">FCS</a>
+        <a href="https://forum.firo.org/" target="_blank" rel="noopener">Forum</a>
+        <a href="https://t.me/firoorg" target="_blank" rel="noopener">Telegram</a>
+        <a href="https://discord.com/invite/TGZPRbRT3Y" target="_blank" rel="noopener">Discord</a>
+        <a href="https://twitter.com/firoorg" target="_blank" rel="noopener">X/@firoorg</a>
+        <a href="https://github.com/firoorg" target="_blank" rel="noopener" title="Upstream Firo org (not this monitor’s repo)">Firo org</a>
+      </nav>
+    </footer>
+  </div>
+
+  <button class="fab" id="fab" aria-label="Open help assistant"><span class="fi"></span> Ask the monitor</button>
+  <div class="chatwrap" id="chatwrap" role="dialog" aria-modal="true" aria-label="Firo Spark Sync Monitor assistant">
+    <div class="chead">
+      <span class="flame" style="width:20px;height:20px;border-radius:6px"></span>
+      <div><div class="ct">Monitor assistant</div><div class="cs">FAQ + live fleet status</div></div>
+      <button class="cclose" id="cclose" aria-label="Close assistant">&times;</button>
+    </div>
+    <div class="cbody" id="cbody"></div>
+    <div class="qchips" id="qchips"></div>
+    <div class="cfoot">
+      <input id="cinput" type="text" placeholder="Ask about Spark, setHash, wallets, TLS, FCS…" autocomplete="off" />
+      <button id="csend">Send</button>
+    </div>
+  </div>
+
+<script>
+var H={points:[]}
+var S=null
+var curDetail=null
+var HKEY='firo-spark-hist-v1'
+function fmt(n){ return n==null?'—':Number(n).toLocaleString() }
+function ms(n){ return n==null?'—':(n>=1000?(n/1000).toFixed(1)+'s':Math.round(n)+' ms') }
+function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}) }
+function ago(t){ if(!t)return '—'; var d=Math.max(0,Date.now()-new Date(t).getTime()),m=Math.round(d/60000); if(m<1)return 'just now'; if(m<60)return m+' min ago'; var h=Math.round(m/60); if(h<24)return h+'h ago'; return Math.round(h/24)+'d ago' }
+function isSnapshot(s){ return s && s.anonset_source==='snapshot' }
+function isLive(s){ return s && s.anonset_source==='live' }
+function isHistoryPreview(h){ return !!(h && (h.available===false || h.preview===true)) }
+function isPreviewMode(s,h){ return isSnapshot(s) || isHistoryPreview(h) }
+function setPreviewMode(on){ document.body.classList.toggle('preview-mode', !!on) }
+var HistAPI=null // durable /api/history payload when always-on
+var CiAPI=null // live /api/ci gate
+function tipHTML(label,text){ return '<span class="tip" tabindex="0">'+label+'<span class="qi">?</span><span class="tt">'+text+'</span></span>' }
+function pctStr(v){ return v==null?'—':(Number(v).toFixed(1)+'%') }
+function slowThreshMs(){
+  if(window.FiroEnhance&&window.FiroEnhance.slowThresholdMs) return window.FiroEnhance.slowThresholdMs(S,HistAPI)
+  if(S&&S.stats&&S.stats.anonset_slow_threshold_ms!=null) return S.stats.anonset_slow_threshold_ms
+  return 45000
+}
+function isAnonSlow(ms){
+  if(window.FiroEnhance&&window.FiroEnhance.isAnonSlow) return window.FiroEnhance.isAnonSlow(ms, slowThreshMs())
+  return ms!=null && ms>slowThreshMs()
+}
+var beFilter={q:'',status:'all',wallet:'all'}
+function usedByHtml(list){
+  if(!list||!list.length) return '<span class="host">—</span>'
+  return '<div class="usedby">'+list.map(function(w){return '<span class="wtag">'+esc(w)+'</span>'}).join('')+'</div>'
+}
+function matchesBeFilter(e){
+  if(beFilter.status!=='all' && e.status!==beFilter.status) return false
+  if(beFilter.wallet!=='all'){
+    var ub=e.used_by||[]
+    if(ub.indexOf(beFilter.wallet)<0) return false
+  }
+  if(beFilter.q){
+    var q=beFilter.q.toLowerCase()
+    var hay=[e.name,e.host,e.operator,e.id].concat(e.used_by||[]).join(' ').toLowerCase()
+    if(hay.indexOf(q)<0) return false
+  }
+  return true
+}
+function closeDiagnose(){
+  var bd=document.getElementById('diag-backdrop')
+  if(bd) bd.classList.remove('open')
+}
+function openDiagnose(id){
+  var e=((S&&S.endpoints)||[]).filter(function(x){return x.id===id})[0]
+  if(!e) return
+  var d=(window.FiroEnhance&&window.FiroEnhance.diagnose)?window.FiroEnhance.diagnose(e,S):null
+  if(!d) return
+  var sheet=document.getElementById('diag-sheet')
+  var bd=document.getElementById('diag-backdrop')
+  if(!sheet||!bd) return
+  var tone=d.status==='red'?'var(--red)':'var(--yellow)'
+  sheet.innerHTML=
+    '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">'+
+      '<div><h3 id="diag-title">'+esc(d.name)+'</h3>'+
+      '<div class="dsub"><span class="st '+esc(d.status)+'">'+esc(d.status)+'</span> · '+esc(d.primary)+
+      (d.used_by.length?' · used by '+esc(d.used_by.join(', ')):'')+'</div></div>'+
+      '<button type="button" class="tbtn" id="diag-close">Close</button></div>'+
+    '<h4>Likely cause</h4><p style="margin:0;font-size:13px;line-height:1.55;color:var(--text)">'+esc(d.cause)+'</p>'+
+    '<h4>Reasons</h4><div class="reasonchips">'+d.reasons.map(function(r){
+      var cls=r==='healthy'?'ok':(/mismatch|fail|expired|unreachable|timeout|far behind/i.test(r)?'bad':'warn')
+      return '<span class="'+cls+'">'+esc(r)+'</span>'
+    }).join('')+'</div>'+
+    '<h4>Wallet tips</h4><ul>'+d.wallet.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>'+
+    '<h4>Operator checks</h4><ul>'+d.operator.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>'+
+    '<h4>Raw signal</h4><pre>'+esc(d.raw)+'</pre>'+
+    '<h4>Reproduce</h4><pre id="diag-repro">'+esc(d.reproduce)+'</pre>'+
+    '<div class="diag-actions">'+
+      '<button type="button" class="tbtn pri" id="diag-copy-repro">Copy reproduce</button>'+
+      '<button type="button" class="tbtn" id="diag-copy-raw">Copy raw</button>'+
+      '<a class="tbtn" href="/backend/'+encodeURIComponent(d.id)+'" id="diag-open-detail">Open detail</a>'+
+    '</div>'
+  bd.classList.add('open')
+  var c=document.getElementById('diag-close'); if(c) c.onclick=closeDiagnose
+  var od=document.getElementById('diag-open-detail'); if(od) od.addEventListener('click',closeDiagnose)
+  function copyTxt(btn,text){
+    if(!text||!navigator.clipboard) return
+    navigator.clipboard.writeText(text).then(function(){
+      var old=btn.textContent; btn.textContent='Copied'; btn.classList.add('copyok')
+      setTimeout(function(){ btn.textContent=old; btn.classList.remove('copyok') },1200)
+    })
+  }
+  var cr=document.getElementById('diag-copy-repro'); if(cr) cr.onclick=function(){ copyTxt(cr,d.reproduce) }
+  var cw=document.getElementById('diag-copy-raw'); if(cw) cw.onclick=function(){ copyTxt(cw,d.raw) }
+}
+function fetchCi(){
+  fetch('/api/ci').then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j} }) }).then(function(x){
+    CiAPI=x.j; window.CiAPI=x.j
+    if(S) render(S)
+  }).catch(function(){ CiAPI=null })
+}
+function renderUptime(){
+  var cards=document.getElementById('uptime-cards')
+  var rows=document.getElementById('uptime-rows')
+  var meta=document.getElementById('uptime-meta')
+  if(!cards||!rows) return
+  if(!HistAPI||!HistAPI.uptime||isHistoryPreview(HistAPI)||!(HistAPI.sample_count>0)){
+    var preview=isHistoryPreview(HistAPI)||isSnapshot(S)||isPreviewMode(S,HistAPI)
+    cards.innerHTML='<div class="card e"><div class="n">—</div><div class="l">Fleet 24h</div><div class="s">'+(preview?'Limited preview · no SQLite':'warming history…')+'</div></div>'
+    rows.innerHTML='<tr><td colspan="4" style="color:var(--muted)">'+(preview?'Not recorded in limited preview. Open <a href="https://firostatus.com/">firostatus.com</a> for 24h/7d uptime.':'No durable history yet — waiting for always-on samples…')+'</td></tr>'
+    if(meta) meta.textContent=preview?'24h / 7d · preview stub':'24h / 7d · unavailable'
+    return
+  }
+  var u=HistAPI.uptime
+  if(meta) meta.textContent='24h / 7d · '+(HistAPI.sample_count||0)+' samples · SQLite'+(HistAPI.recording_since?' · since '+ago(HistAPI.recording_since):'')
+  cards.innerHTML=''
+  function uc(cls,n,l,sub){var d=document.createElement('div');d.className='card '+cls;d.innerHTML='<div class="n">'+n+'</div><div class="l">'+l+'</div>'+(sub?'<div class="s">'+sub+'</div>':'');cards.appendChild(d)}
+  var f24=u.fleet_pct_24h, f7=u.fleet_pct_7d
+  uc(f24!=null&&f24<95?'y':'g', pctStr(f24), 'Fleet 24h', 'strict green % · not SLA')
+  uc(f7!=null&&f7<95?'y':'g', pctStr(f7), 'Fleet 7d', 'strict green % · not SLA')
+  uc('e', fmt(HistAPI.sample_count), 'Samples stored', 'SQLite rows')
+  uc('c', HistAPI.windows&&HistAPI.windows.h24?fmt(HistAPI.windows.h24.fleet_samples):'—', 'Samples (24h)', HistAPI.uptime_note?String(HistAPI.uptime_note).slice(0,48):'all endpoints')
+  rows.innerHTML=''
+  var eps=(S&&S.endpoints)||[]
+  var ids=eps.length?eps.map(function(e){return e.id}):Object.keys(u.endpoints||{})
+  ids.forEach(function(id){
+    var name=(eps.filter(function(e){return e.id===id})[0]||{}).name||id
+    var eu=(u.endpoints&&u.endpoints[id])||{}
+    var tr=document.createElement('tr')
+    tr.innerHTML='<td><a class="blink name" href="/backend/'+id+'">'+esc(name)+'</a></td>'+
+      '<td class="mono">'+pctStr(eu.pct_24h)+'</td>'+
+      '<td class="mono">'+pctStr(eu.pct_7d)+'</td>'+
+      '<td class="mono">'+(eu.samples_24h!=null?fmt(eu.samples_24h):'—')+'</td>'
+    rows.appendChild(tr)
+  })
+}
+function historyFreshNote(h){
+  if(!h||!h.cache) return ''
+  if(h.cache.refreshing) return 'Showing cached history · loading freshest samples…'
+  if(h.cache.age_s!=null&&h.cache.age_s>60) return 'Showing cached history · last rebuild '+h.cache.age_s+'s ago · refreshing…'
+  if(h.cache.hit) return 'Pre-cached history · ready'
+  return h.cache.note||''
+}
+var histSoftRetryTimer=null
+function setOverviewHistLoad(msg, spinning){
+  var el=document.getElementById('ov-hist-load')
+  if(!el) return
+  if(!msg){ el.style.display='none'; return }
+  el.style.display=''
+  el.innerHTML=(spinning!==false?'<span class="spin"></span>':'')+'<span>'+msg+'</span>'
+}
+function fetchHistory(){
+  var load=document.getElementById('ov-hist-load')
+  if(load&&!HistAPI) setOverviewHistLoad('Loading durable charts — please wait…', true)
+  fetch('/api/history?hours=168&limit=900').then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status)
+    return r.json()
+  }).then(function(h){
+    HistAPI=h
+    window.HistAPI=h
+    setPreviewMode(isPreviewMode(S,HistAPI))
+    renderUptime()
+    // Skip chart paint on preview stub — empty canvases look broken.
+    if(window.FiroEnhance && !isHistoryPreview(h) && h.sample_count>0) window.FiroEnhance.onHistory(h)
+    if(S){ renderM1Checklist(S); render(S) }
+    var note=historyFreshNote(h)
+    if(h&&h.cache&&(h.cache.refreshing||(h.cache.age_s!=null&&h.cache.age_s>60))){
+      setOverviewHistLoad(note||'Showing cached history · loading freshest samples…', true)
+    } else if(h&&h.cache&&h.cache.hit){
+      setOverviewHistLoad(note||'Pre-cached history · ready', false)
+      setTimeout(function(){ setOverviewHistLoad(null) },1600)
+    } else {
+      setOverviewHistLoad(null)
+    }
+    // Soft re-fetch while a background rebuild is in flight (one timer at a time).
+    if(h&&h.cache&&h.cache.refreshing&&!histSoftRetryTimer){
+      histSoftRetryTimer=setTimeout(function(){ histSoftRetryTimer=null; fetchHistory() },2800)
+    }
+  }).catch(function(){
+    HistAPI=null
+    window.HistAPI=null
+    setPreviewMode(isPreviewMode(S,null))
+    renderUptime()
+    setOverviewHistLoad('Durable history unavailable — retrying…', true)
+  })
+}
+
+function apiOrigin(){ return (location.origin||'').replace(/\/$/,'') || 'https://firostatus.com' }
+function copyTextFor(kind){
+  var o=apiOrigin()
+  if(kind==='status') return "curl -sS "+o+"/api/status | jq '{summary, spark_sethash_consensus, stats}'"
+  if(kind==='ci') return "curl -sS -f "+o+"/api/ci | jq '{ok,spark_ok,max_lag,reasons}'"
+  if(kind==='badge') return '[![Firo Spark fleet]('+o+'/api/badge)]('+o+'/)'
+  return ''
+}
+function fillExamplePres(){
+  var o=apiOrigin()
+  ;['ex-status','ex-ci','ex-ci-spark','ex-spark','ex-history','ex-m1-verify','ex-sethash','ex-embed'].forEach(function(id){
+    var el=document.getElementById(id)
+    if(el) el.textContent=el.textContent.replace(/ORIGIN/g,o).replace(/&amp;/g,'&')
+  })
+}
+fillExamplePres()
+
+function renderM1Checklist(s){
+  var ul=document.getElementById('m1-checklist')
+  if(!ul) return
+  var live=isLive(s)
+  var anonOk=((s&&s.endpoints)||[]).some(function(e){return e.anonset&&e.anonset.ok&&e.anonset.ms!=null})
+  var histOk=!!(HistAPI&&HistAPI.sample_count>0&&HistAPI.uptime)
+  var items=[
+    [live,'anonset_source = live','Continuous always-on sweeps'],
+    [anonOk,'Anon-set fields populated','ms / MB / setHash on endpoints'],
+    [histOk,'/api/history recording', histOk?((HistAPI.sample_count||0)+' samples · fleet 24h '+(HistAPI.uptime.fleet_pct_24h!=null?HistAPI.uptime.fleet_pct_24h+'%':'—')):'sample_count + uptime %'],
+    [true,'Own domain + HTTPS','firostatus.com · always-on'],
+    [true,'Public MIT source','gitlab.com/panagiotispollis/firostatus'],
+    [true,'Forum launch write-up','live URL + API curls']
+  ]
+  ul.innerHTML=items.map(function(it){
+    return '<li><span class="mk '+(it[0]?'ok':'pend')+'">'+(it[0]?'ok':'pend')+'</span><div><b>'+it[1]+'</b><div class="host">'+it[2]+'</div></div></li>'
+  }).join('')
+}
+
+document.addEventListener('click',function(ev){
+  var btn=ev.target.closest('[data-copy],[data-copy-kind]')
+  if(!btn) return
+  ev.preventDefault()
+  var text=btn.getAttribute('data-copy')||copyTextFor(btn.getAttribute('data-copy-kind')||'')
+  if(!text) return
+  var prev=btn.textContent
+  function done(){ btn.textContent='Copied'; btn.classList.add('copyok'); setTimeout(function(){ btn.textContent=prev; btn.classList.remove('copyok') },1200) }
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(function(){ window.prompt('Copy:', text) })
+  else window.prompt('Copy:', text)
+})
+
+var secToggle=document.getElementById('toggle-sec-cols')
+var backendsWrap=document.getElementById('backends-wrap')
+if(secToggle&&backendsWrap){
+  secToggle.addEventListener('click',function(){
+    var on=backendsWrap.classList.toggle('show-sec')
+    secToggle.setAttribute('aria-pressed', on?'true':'false')
+    secToggle.textContent=on?'Hide RTT & trend':'Show RTT & trend'
+  })
+}
+;['be-search','be-status','be-wallet'].forEach(function(id){
+  var el=document.getElementById(id)
+  if(!el) return
+  el.addEventListener(id==='be-search'?'input':'change',function(){
+    if(id==='be-search') beFilter.q=(el.value||'').trim()
+    if(id==='be-status') beFilter.status=el.value||'all'
+    if(id==='be-wallet') beFilter.wallet=el.value||'all'
+    if(S) render(S)
+  })
+})
+document.addEventListener('click',function(ev){
+  var dbtn=ev.target.closest('[data-diagnose]')
+  if(dbtn){
+    ev.preventDefault()
+    openDiagnose(dbtn.getAttribute('data-diagnose'))
+    return
+  }
+  var bd=document.getElementById('diag-backdrop')
+  if(bd&&bd.classList.contains('open')&&ev.target===bd) closeDiagnose()
+})
+document.addEventListener('keydown',function(ev){
+  if(ev.key==='Escape') closeDiagnose()
+})
+
+function loadHist(){ try{return JSON.parse(localStorage.getItem(HKEY)||'[]')}catch(e){return[]} }
+function saveHist(a){ try{localStorage.setItem(HKEY,JSON.stringify(a.slice(-240)))}catch(e){} }
+function recordHist(s){
+  if(!s||!s.summary)return
+  var a=loadHist()
+  var last=a.length?a[a.length-1]:null
+  if(last&&last.t===s.checked_at)return
+  var epMap={};(s.endpoints||[]).forEach(function(e){epMap[e.id]={lat:e.latency_ms,lag:e.lag,height:e.height}})
+  a.push({t:s.checked_at,ref:s.reference,spark:s.spark_consensus,green:s.summary.green,yellow:s.summary.yellow,red:s.summary.red,avgLatency:(s.stats||{}).avg_latency,ep:epMap})
+  saveHist(a); H={points:a}
+}
+
+// ---- tiny SVG chart helpers (no deps) ----
+function sparkPath(vals,w,h,pad){
+  var xs=vals.filter(function(v){return v!=null})
+  if(!xs.length) return {line:'',area:'',flat:true}
+  var min=Math.min.apply(null,xs), max=Math.max.apply(null,xs)
+  if(min===max){min-=1;max+=1}
+  var n=vals.length, step=n>1?(w-2*pad)/(n-1):0, pts=[]
+  for(var i=0;i<n;i++){ if(vals[i]==null)continue
+    var x=pad+i*step, y=h-pad-((vals[i]-min)/(max-min))*(h-2*pad); pts.push([x,y]) }
+  if(!pts.length) return {line:'',area:'',flat:true}
+  var d=pts.map(function(p,i){return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)}).join(' ')
+  var area=d+' L'+pts[pts.length-1][0].toFixed(1)+' '+(h-pad)+' L'+pts[0][0].toFixed(1)+' '+(h-pad)+' Z'
+  return {line:d,area:area,flat:false}
+}
+function lineChart(el,vals,color,unit){
+  var w=el.clientWidth||520, h=120, pad=8
+  if(!vals.some(function(v){return v!=null})){ el.innerHTML='<div style="color:var(--muted);font-size:11px;padding:6px 0">collecting… (charts fill as polls arrive)</div>'; return }
+  var s=sparkPath(vals,w,h,pad)
+  var last=null; for(var i=vals.length-1;i>=0;i--){if(vals[i]!=null){last=vals[i];break}}
+  var svg='<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none">'
+  if(s.flat){ svg+='<line x1="'+pad+'" y1="'+(h/2)+'" x2="'+(w-pad)+'" y2="'+(h/2)+'" stroke="'+color+'" stroke-opacity=".5" stroke-width="2"/>' }
+  else{
+    svg+='<defs><linearGradient id="g_'+el.id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+color+'" stop-opacity=".28"/><stop offset="1" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'
+    svg+='<path d="'+s.area+'" fill="url(#g_'+el.id+')"/>'
+    svg+='<path d="'+s.line+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+  }
+  svg+='</svg>'
+  el.innerHTML=svg+(last!=null?'<div style="font-size:11px;color:var(--muted);margin-top:4px">now: <b style="color:'+color+'">'+(unit==='ms'?ms(last):fmt(last))+'</b></div>':'')
+}
+function stackedBars(el,pts){
+  var w=el.clientWidth||520, h=120, n=pts.length; if(!n){el.innerHTML='<div style="color:var(--muted);font-size:11px">collecting…</div>';return}
+  var bw=Math.max(2,(w-(n-1)*2)/n), max=1
+  pts.forEach(function(p){max=Math.max(max,(p.green||0)+(p.yellow||0)+(p.red||0))})
+  var svg='<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'">'
+  pts.forEach(function(p,i){
+    var x=i*(bw+2), y=h
+    ;[['red',p.red,'var(--red)'],['yellow',p.yellow,'var(--yellow)'],['green',p.green,'var(--green)']].forEach(function(seg){
+      var v=seg[1]||0; if(!v)return; var hh=(v/max)*(h-6); y-=hh
+      svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" fill="'+seg[2]+'" rx="1"/>'
+    })
+  })
+  svg+='</svg>'; el.innerHTML=svg
+}
+function statusColor(st){return st==='green'?'var(--green)':st==='yellow'?'var(--yellow)':st==='red'?'var(--red)':'var(--muted)'}
+
+function render(s){
+  var hasData=!!(s&&s.endpoints&&s.endpoints.length)
+  var lm=document.getElementById('loadmsg'), lk=document.getElementById('loadskel')
+  window.S=s
+  window.H=H
+  setPreviewMode(isPreviewMode(s,HistAPI))
+  if(window.FiroEnhance) window.FiroEnhance.onStatus(s)
+  renderM1Checklist(s)
+  if(hasData){
+    if(lm)lm.style.display='none'
+    if(lk)lk.style.display='none'
+  } else {
+    if(lm){ lm.style.display=''; var t=lm.querySelector('span:last-child'); if(t) t.textContent = (s&&s.polling)?'Warming up — running the first probe sweep…':'Loading live data from the Firo Electrum backends… first probe can take up to ~20–30s.' }
+    if(lk) lk.style.display=''
+    var ch=document.getElementById('chips'); if(ch) ch.innerHTML='<span class="chip"><span class="spin" style="width:10px;height:10px"></span> '+((s&&s.polling)?'warming up…':'loading…')+'</span>'
+    var mst=document.getElementById('mp-state'), msu=document.getElementById('mp-sub'), mdot=document.querySelector('#mastpill .hbdot')
+    if(mst) mst.textContent=(s&&s.polling)?'Warming up…':'Checking fleet…'
+    if(msu) msu.textContent=(s&&s.polling)?'running first probe sweep':'connecting to Firo backends'
+    if(mdot) mdot.className='hbdot'
+    return
+  }
+  var chips=document.getElementById('chips'); chips.innerHTML=''
+  function chip(t){var e=document.createElement('span');e.className='chip';e.textContent=t;chips.appendChild(e)}
+  chip((s.summary?s.summary.total:0)+' backends')
+  chip('ref tip '+fmt(s.reference))
+  chip('spark coin id '+(s.spark_consensus==null?'—':s.spark_consensus))
+  chip('checked '+(s.checked_at?new Date(s.checked_at).toLocaleTimeString():'—'))
+  if(isLive(s)) chip('anon-set live')
+  else if(isSnapshot(s)) chip('anon-set snapshot')
+  if(HistAPI) chip('history on')
+
+  var modeBadge=document.getElementById('modebadge')
+  var modeLabel=document.getElementById('modebadge-label')
+  if(modeBadge&&modeLabel){
+    if(isLive(s)){ modeBadge.className='badge live'; modeLabel.textContent='Always-on · live' }
+    else if(isSnapshot(s)){ modeBadge.className='badge snap'; modeLabel.textContent='Preview · snapshot' }
+    else { modeBadge.className='badge'; modeLabel.textContent='Connected' }
+  }
+
+  var cards=document.getElementById('cards'); cards.innerHTML=''
+  var sm=s.summary||{green:0,yellow:0,red:0}, stt=s.stats||{}
+  var mdot2=document.querySelector('#mastpill .hbdot')
+  var mst2=document.getElementById('mp-state')
+  var msu2=document.getElementById('mp-sub')
+  function card(cls,n,l,sub){var d=document.createElement('div');d.className='card '+cls;d.innerHTML='<div class="n">'+n+'</div><div class="l">'+l+'</div>'+(sub?'<div class="s">'+sub+'</div>':'');cards.appendChild(d)}
+  var der=window.FiroEnhance&&window.FiroEnhance.derive?window.FiroEnhance.derive(s,HistAPI):null
+  var inconsistent=(s.endpoints||[]).some(function(e){return e.spark_consistent===false||(e.anonset&&e.anonset.consistent===false)})
+  var sparkOk=CiAPI&&typeof CiAPI.spark_ok==='boolean'?CiAPI.spark_ok:(!inconsistent && !sm.red)
+  var tipOk=CiAPI&&typeof CiAPI.ok==='boolean'?CiAPI.ok:(sparkOk && (stt.max_lag==null || stt.max_lag<=2))
+  var maxLagNow=CiAPI&&CiAPI.max_lag!=null?CiAPI.max_lag:stt.max_lag
+  var slowBand=(der&&der.slowThreshMs!=null?der.slowThreshMs:slowThreshMs())
+  var rttBand=stt.probe_rtt_yellow_threshold_ms!=null?stt.probe_rtt_yellow_threshold_ms:null
+  var mcls=sm.red?'r':(sparkOk? (sm.yellow?'y':'g') : 'y')
+  if(mdot2) mdot2.className='hbdot '+mcls
+  var mstate2=sm.red?(sm.red+' backend'+(sm.red>1?'s':'')+' critical'):(sparkOk?(sm.yellow?('Spark PASS · '+sm.yellow+' ops yellow'):'Spark PASS · fleet tip OK'):(sm.yellow?(sm.yellow+' degraded'):'Checking Spark…'))
+  if(mst2) mst2.textContent=mstate2
+  if(msu2) msu2.textContent=(tipOk?'/api/ci ok':'/api/ci check')+' · '+(sm.total||0)+' backends · '+(s.checked_at?new Date(s.checked_at).toLocaleTimeString():'—')
+
+  card(sparkOk?'g':'r', sparkOk?'PASS':'FAIL', tipHTML('Spark gate','From /api/ci spark_ok: no red hosts; Spark coin id + setHash agree. Prefer this over green-count.'),'/api/ci · spark_ok')
+  card(tipOk?'g':'y', tipOk?'PASS':'FAIL', tipHTML('Tip+Spark gate','/api/ci ok requires spark_ok and max_lag ≤ 2.'),'/api/ci · ok')
+  card(sm.yellow?'y':'g', (sm.green||0)+'/'+(sm.total||0)+' green', tipHTML('Strict green count','Green = tip fresh, Spark+setHash match, TLS OK, probe RTT not a fleet outlier'+(rttBand!=null?' (band ≤'+rttBand+'ms)':'')+'. Yellow is ops — CI can still pass.'),'not the Spark gate')
+  card(der&&der.risk>=60?'r':(der&&der.risk>=30?'y':'e'), der? (der.risk+' · '+der.riskLabel) : ms(stt.anonset_ms), tipHTML('Spark sync risk','Composite 0–100 from setHash/Spark mismatch, tip lag, slow anon-set share, and TLS urgency. Not a wallet UX score.'),'ops risk')
+
+  var gates=document.getElementById('ov-gates')
+  if(gates){
+    var fr=der&&der.fastestRel
+    var noteBits=[]
+    if(CiAPI&&CiAPI.notes&&CiAPI.notes.length) noteBits=CiAPI.notes
+    gates.innerHTML=
+      '<div class="g"><div class="gl">Spark gate · spark_ok</div><div class="gv" style="color:'+(sparkOk?'var(--green)':'var(--red)')+'">'+(sparkOk?'PASS':'FAIL')+'</div><div class="gs">'+(CiAPI?'from /api/ci · ':'')+'No red hosts · coin id + setHash agree</div></div>'+
+      '<div class="g"><div class="gl">Tip+Spark gate · ok (/api/ci)</div><div class="gv" style="color:'+(tipOk?'var(--green)':'var(--yellow)')+'">'+(tipOk?'PASS':'FAIL')+'</div><div class="gs">Requires spark_ok and max_lag ≤ 2'+(maxLagNow!=null?' · now '+maxLagNow:'')+'</div></div>'+
+      '<div class="g"><div class="gl">Fastest reliable host</div><div class="gv" style="color:var(--cyan)" id="ov-fastest">'+(fr?(esc(fr.name)+' · '+ms(fr.anonset.ms)):'—')+'</div><div class="gs">green · setHash OK · not slow vs ~'+(slowBand/1000).toFixed(0)+'s band · TLS'+(der&&der.agreement!=null?' · agree '+der.agreement+'%':'')+'</div></div>'+
+      (noteBits.length?'<div class="g" style="grid-column:1/-1"><div class="gl">CI notes</div><div class="gs">'+noteBits.map(function(n){return esc(n)}).join(' · ')+'</div></div>':'')
+  }
+
+  var warn=document.getElementById('sparkwarn'); warn.innerHTML=''
+  var mism=(s.endpoints||[]).filter(function(e){return e.spark_consistent===false})
+  var setMism=(s.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.consistent===false})
+  if(mism.length){ var wdiv=document.createElement('div'); wdiv.className='warn'
+    wdiv.textContent='\u26a0 '+mism.length+' backend(s) report a different Spark coin-group id than fleet consensus ('+s.spark_consensus+') — wallets there may see inconsistent Spark state.'
+    warn.appendChild(wdiv) }
+  if(setMism.length){ var sdiv=document.createElement('div'); sdiv.className='warn'
+    sdiv.innerHTML='\u26a0 '+setMism.length+' backend(s) serve a divergent anon-set <code>setHash</code> vs fleet consensus'+(s.spark_sethash_consensus?' ('+esc(String(s.spark_sethash_consensus).slice(0,18))+'…)':'')+' — tip/Spark id can still look fine. Marked yellow. '+setMism.map(function(e){return esc(e.name)}).join(', ')+'.'
+    warn.appendChild(sdiv) }
+  else if(!tipOk && sparkOk){
+    var tipw=document.createElement('div'); tipw.className='note'; tipw.style.marginTop='12px'
+    tipw.innerHTML='Spark path looks consistent, but tip lag is outside the green band (max_lag '+(stt.max_lag)+'). <code>/api/ci</code> returns HTTP 503 until lag ≤2 — use <code>spark_ok</code> for Spark-only checks.'
+    warn.appendChild(tipw)
+  }
+
+  var ovm=document.getElementById('ov-spark-meta')
+  if(ovm){
+    if(s.anonset_refreshing) ovm.textContent='anon-set refreshing · showing last-good'
+    else if(s.anonset_checked_at) ovm.textContent=(isSnapshot(s)?'snapshot · ':'')+'measured '+ago(s.anonset_checked_at)+(s.anonset_source==='last_good'?' · cached':(isSnapshot(s)?' · preview bake':' · live'))
+    else ovm.textContent='anon-set pending… first heavy sweep in progress'
+  }
+  var ovc=document.getElementById('ov-spark-cards')
+  if(ovc){
+    ovc.innerHTML=''
+    function ovcard(cls,n,l,sub){var d=document.createElement('div');d.className='card '+cls;d.innerHTML='<div class="n">'+n+'</div><div class="l">'+l+'</div>'+(sub?'<div class="s">'+sub+'</div>':'');ovc.appendChild(d)}
+    ovcard('e',stt.anonset_coins!=null?fmt(stt.anonset_coins):'—',tipHTML('Anon-set coins','Coins in the active Spark anonymity set a wallet must download to sync.'),'group '+(s.spark_consensus==null?'—':s.spark_consensus))
+    ovcard('c',stt.anonset_mb!=null?stt.anonset_mb+' MB':'—',tipHTML('Avg download size','Average bytes for one full anon-set fetch. Same setHash can still mean different MB per operator.'),'avg per backend')
+    ovcard('y',ms(stt.anonset_ms),tipHTML('Median fetch time','Median full anon-set serve time from this monitor.'),'mobile-sync bottleneck')
+    var shOk=(s.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.ok&&e.anonset.consistent===true}).length
+    var shTot=(s.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.ok}).length
+    var shBad=(s.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.consistent===false}).length
+    ovcard(shBad?'r':(shOk===shTot&&shTot?'g':'y'), shTot? (shOk+' / '+shTot) : '—', tipHTML('setHash agreement','Backends whose measured setHash matches fleet consensus. Yellow status can mean setHash ✗ even when lag is 0 and Spark coin id matches.'),(s.spark_sethash_consensus?'consensus set':'no consensus yet'))
+    if(der&&der.mbMin!=null&&der.mbMax!=null){
+      ovcard('c', der.mbMin+'–'+der.mbMax+' MB', tipHTML('Bandwidth spread','Min–max anon-set MB among setHash-consistent hosts. Same hash can still mean different wire bytes.'),'same set · different MB')
+    }
+  }
+
+  var glance=document.getElementById('ov-glance')
+  if(glance){
+    glance.innerHTML=''
+    var sorted=(s.endpoints||[]).slice().sort(function(a,b){
+      var am=a.anonset&&a.anonset.ok?a.anonset.ms:1e12, bm=b.anonset&&b.anonset.ok?b.anonset.ms:1e12
+      return am-bm
+    })
+    sorted.forEach(function(e){
+      var a=e.anonset
+      var up=(HistAPI&&HistAPI.uptime&&HistAPI.uptime.endpoints&&HistAPI.uptime.endpoints[e.id])||null
+      var tr=document.createElement('tr')
+      tr.innerHTML=
+        '<td><a class="blink name" href="/backend/'+e.id+'">'+esc(e.name)+'</a></td>'+
+        '<td class="mono">'+(e.lag==null?'—':e.lag+' blk')+'</td>'+
+        '<td class="mono">'+(e.spark_latest_coin_id==null?'—':esc(e.spark_latest_coin_id))+(e.spark_consistent===false?' <span class="bad">✗</span>':'')+'</td>'+
+        '<td class="mono">'+(a&&a.ok?ms(a.ms)+' · '+(a.mb!=null?a.mb+' MB':'—'):'—')+'</td>'+
+        '<td class="mono" style="font-size:11px">'+(a&&a.setHash?esc(String(a.setHash).slice(0,10))+'…':'—')+(a&&a.consistent===false?' <span class="bad">✗</span>':(a&&a.consistent===true?' <span class="ok">✓</span>':''))+'</td>'+
+        '<td class="mono">'+(e.tls_days_left==null?'—':e.tls_days_left+'d')+'</td>'+
+        '<td class="mono">'+(up?pctStr(up.pct_24h):'—')+'</td>'+
+        '<td><span class="st '+e.status+'">'+e.status+'</span></td>'
+      glance.appendChild(tr)
+    })
+  }
+
+  var liveCi=document.getElementById('live-ci')
+  if(liveCi){
+    var reasons=(CiAPI&&CiAPI.reasons&&CiAPI.reasons.length)?CiAPI.reasons.join('; '):(tipOk?'':(sparkOk?('max_lag='+maxLagNow+' exceeds ≤2'):'Spark inconsistency or red host'))
+    liveCi.innerHTML='Live gate from <code>/api/ci</code>'+(isSnapshot(s)?' <span class="snapchip">snapshot</span>':'')+': <b style="color:'+(sparkOk?'var(--green)':'var(--red)')+'">spark_ok='+sparkOk+'</b> · <b style="color:'+(tipOk?'var(--green)':'var(--yellow)')+'">ok='+tipOk+'</b> · max_lag='+(maxLagNow==null?'—':maxLagNow)+
+      (reasons?' · reasons: '+esc(reasons):'')+
+      ' · <a href="/api/ci" target="_blank" rel="noopener">/api/ci</a>'
+  }
+
+  document.getElementById('lat-med').textContent=ms(stt.median_latency)
+  document.getElementById('lat-minmax').textContent=ms(stt.fastest)+' / '+ms(stt.slowest)
+
+  var lb=document.getElementById('latbars'); lb.innerHTML=''
+  var eps=(s.endpoints||[]).slice().sort(function(a,b){return (a.latency_ms||1e9)-(b.latency_ms||1e9)})
+  var maxL=Math.max.apply(null,eps.map(function(e){return e.latency_ms||0}).concat([1]))
+  eps.forEach(function(e){
+    var pct=e.latency_ms?Math.max(3,(e.latency_ms/maxL)*100):0
+    var row=document.createElement('div'); row.style.margin='9px 0'
+    row.innerHTML='<div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:4px"><a class="blink" href="/backend/'+e.id+'">'+esc(e.name)+'</a><span class="mono" style="color:'+statusColor(e.status)+'">'+ms(e.latency_ms)+'</span></div>'+
+      '<div class="bar"><span style="width:'+pct+'%;background:'+statusColor(e.status)+'"></span></div>'
+    lb.appendChild(row)
+  })
+
+  var rows=document.getElementById('rows'); rows.innerHTML=''
+  var statusRank={red:0,yellow:1,green:2}
+  var sortedEps=(s.endpoints||[]).slice().sort(function(a,b){
+    var ra=statusRank[a.status]!=null?statusRank[a.status]:9
+    var rb=statusRank[b.status]!=null?statusRank[b.status]:9
+    if(ra!==rb) return ra-rb
+    var al=a.lag==null?1e9:a.lag, bl=b.lag==null?1e9:b.lag
+    if(al!==bl) return al-bl
+    var am=a.anonset&&a.anonset.ok?a.anonset.ms:1e12, bm=b.anonset&&b.anonset.ok?b.anonset.ms:1e12
+    return am-bm
+  })
+  var filtered=sortedEps.filter(matchesBeFilter)
+  var beCount=document.getElementById('be-count')
+  if(beCount) beCount.textContent=filtered.length+' / '+sortedEps.length+' shown · critical → healthy'
+  if(!filtered.length){
+    rows.innerHTML='<tr><td colspan="14" style="color:var(--muted);padding:28px 14px">No backends match these filters.</td></tr>'
+  }
+  filtered.forEach(function(e){
+    var tr=document.createElement('tr')
+    var trend=H&&H.points?H.points.map(function(p){return p.ep&&p.ep[e.id]?p.ep[e.id].lat:null}):[]
+    var sid='sp_'+e.id
+    var a=e.anonset
+    var tlsDays=e.tls_days_left
+    var tlsCls=tlsDays==null?'':(tlsDays<0?'bad':(tlsDays<14?'warnc':'ok'))
+    var tlsTxt=tlsDays==null?'—':(tlsDays+'d')
+    var up=(HistAPI&&HistAPI.uptime&&HistAPI.uptime.endpoints&&HistAPI.uptime.endpoints[e.id])||null
+    tr.className='st-'+(e.status==='green'?'g':e.status==='yellow'?'y':'r')
+    var reasons=(window.FiroEnhance&&window.FiroEnhance.failReasons)?window.FiroEnhance.failReasons(e):[]
+    tr.title=reasons.join(' · ')
+    var diag=(e.status==='yellow'||e.status==='red')
+      ? '<button type="button" class="diag-btn'+(e.status==='red'?' r':'')+'" data-diagnose="'+esc(e.id)+'">Diagnose</button>'
+      : ''
+    tr.innerHTML=
+      '<td><a class="blink name" href="/backend/'+e.id+'">'+esc(e.name)+'</a><div class="host">'+esc(e.host)+':'+esc(e.port)+'</div>'+(e.error&&e.height==null?'<div class="bad" style="font-size:11px">'+esc(e.error)+'</div>':'')+diag+'</td>'+
+      '<td>'+usedByHtml(e.used_by)+'</td>'+
+      '<td><span class="op">'+esc(e.operator)+'</span></td>'+
+      '<td class="mono">'+fmt(e.height)+'</td>'+
+      '<td class="mono">'+(e.lag==null?'—':(e.lag+' blk'))+'</td>'+
+      '<td class="mono">'+(a&&a.ok?ms(a.ms)+'<div class="host">'+(a.mb!=null?a.mb+' MB':'—')+'</div>':'—')+'</td>'+
+      '<td class="mono'+(tlsCls?' '+tlsCls:'')+'" title="'+(e.tls_valid_to?esc(e.tls_valid_to):'')+'">'+tlsTxt+(tlsDays!=null&&tlsDays<14?' <span class="warnc">·</span>':'')+'</td>'+
+      '<td class="mono">'+(a&&a.consistent===true?'<span class="ok">✓</span>':(a&&a.consistent===false?'<span class="bad">✗</span>':'—'))+'</td>'+
+      '<td class="mono">'+(up?pctStr(up.pct_24h):'—')+'</td>'+
+      '<td class="mono">'+(up?pctStr(up.pct_7d):'—')+'</td>'+
+      '<td class="mono col-sec">'+ms(e.latency_ms)+'</td>'+
+      '<td class="col-sec" style="width:110px"><div id="'+sid+'" style="height:34px"></div></td>'+
+      '<td class="mono">'+(e.spark_latest_coin_id==null?'—':esc(e.spark_latest_coin_id))+(e.spark_consistent===false?' <span class="bad">✗</span>':'')+'</td>'+
+      '<td><span class="st '+e.status+'">'+e.status+'</span></td>'
+    rows.appendChild(tr)
+    var cell=document.getElementById(sid); if(cell) miniSpark(cell,trend,statusColor(e.status))
+  })
+  renderUptime()
+  document.getElementById('foot').textContent = 'Auto-refreshes each poll this session · light probes run live on each check · '+(isSnapshot(s)?'anon-set fetch-health from a recent measured snapshot':'anon-set fetch-health measured live on this host')+(HistAPI?' · durable SQLite uptime from /api/history':'')+' · '+(s.summary?s.summary.total:0)+' curated endpoints · used_by = wallets that ship/list the host (not exclusive).'
+
+  var ssnap=document.getElementById('sparksnap')
+  if(ssnap){
+    if(s.anonset_refreshing) ssnap.innerHTML='<span class="snapchip">refreshing</span> <span style="font-size:11px;color:var(--muted)">heavy sweep in progress · showing last-good until each host finishes (can take a few minutes)</span>'
+    else if(s.anonset_source==='last_good'&&s.anonset_checked_at) ssnap.innerHTML='<span class="snapchip">cached</span> <span style="font-size:11px;color:var(--muted)">last-good measured '+ago(s.anonset_checked_at)+' · live sweep will replace these</span>'
+    else if(s.anonset_checked_at) ssnap.innerHTML=isSnapshot(s)?'<span class="snapchip">snapshot</span> <span style="font-size:11px;color:var(--muted)">measured '+ago(s.anonset_checked_at)+' · figures below are a recent measurement, not live this second</span>':'<span style="font-size:11px;color:var(--muted)">measured '+ago(s.anonset_checked_at)+' · continuously refreshed</span>'
+    else ssnap.innerHTML='<span style="font-size:11px;color:var(--muted)">anon-set measurement pending… first heavy sweep (~1–2 min/host)</span>'
+  }
+  var sct=document.getElementById('spark-cards-top'); sct.innerHTML=''
+  function scard(cls,n,l,sub){var d=document.createElement('div');d.className='card '+cls;d.innerHTML='<div class="n">'+n+'</div><div class="l">'+l+'</div>'+(sub?'<div class="s">'+sub+'</div>':'');sct.appendChild(d)}
+  scard('e',stt.anonset_coins!=null?fmt(stt.anonset_coins):'—',tipHTML('Anon-set coins','Number of Spark coins in the active anonymity set that a wallet must download to sync.'),'active group '+(s.spark_consensus==null?'—':s.spark_consensus))
+  scard('c',stt.anonset_mb!=null?stt.anonset_mb+' MB':'—',tipHTML('Avg download size','Average bytes served for one full anon-set fetch across backends. The same set can be larger on some backends (compression differences).'),'avg per backend')
+  scard('y',ms(stt.anonset_ms),tipHTML('Median fetch time','Median time to fully serve the anon-set across backends. 15-40s+ is where mobile Spark syncs stall.'),'full anon-set serve')
+  var slowN=stt.anonset_slow||0
+  scard(slowN?'r':'g',slowN,tipHTML('Slow / failed','Backends slower than the fleet band (~'+(slowBand/1000).toFixed(0)+'s = 1.75× median, floor 20s) or that failed/timed out.'),'vs ~'+(slowBand/1000).toFixed(0)+'s band')
+
+  var rank=document.getElementById('spark-rank')
+  if(rank){
+    rank.innerHTML=''
+    var ranked=(s.endpoints||[]).slice().filter(function(e){return e.anonset&&e.anonset.ok}).sort(function(a,b){return a.anonset.ms-b.anonset.ms})
+    if(!ranked.length){ rank.innerHTML='<tr><td colspan="6" style="color:var(--muted)">No anon-set measurements yet.</td></tr>' }
+    ranked.forEach(function(e,i){
+      var a=e.anonset
+      var tr=document.createElement('tr')
+      var thrPct=a.ms!=null?Math.min(100,(a.ms/Math.max(slowBand,1))*100):0
+      var thrCol=isAnonSlow(a.ms)?'var(--red)':(a.ms>slowBand*0.65?'var(--yellow)':'var(--green)')
+      tr.innerHTML='<td class="mono">'+(i+1)+'</td><td><a class="blink" href="/backend/'+e.id+'">'+esc(e.name)+'</a></td><td class="mono" style="color:'+thrCol+'">'+ms(a.ms)+'<div class="thr"><i style="width:'+thrPct+'%;background:'+thrCol+'"></i></div></td><td class="mono">'+(a.mb!=null?a.mb+' MB':'—')+'</td><td class="mono">'+fmt(a.coins)+'</td><td class="mono" style="font-size:11px">'+(a.setHash?esc(String(a.setHash).slice(0,16))+'…':'—')+(a.consistent===false?' <span class="bad">✗</span>':(a.consistent===true?' <span class="ok">✓</span>':''))+'</td>'
+      rank.appendChild(tr)
+    })
+  }
+  var csh=document.getElementById('copy-sethash')
+  if(csh){
+    csh.onclick=function(){
+      var v=s.spark_sethash_consensus||''
+      if(!v) return
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(function(){ csh.textContent='Copied'; csh.classList.add('copyok'); setTimeout(function(){ csh.textContent='Copy consensus setHash'; csh.classList.remove('copyok') },1200) })
+    }
+  }
+
+  var ac=document.getElementById('anoncards'); ac.innerHTML=''
+  ;(s.endpoints||[]).forEach(function(e){
+    var a=e.anonset
+    var d=document.createElement('div'); d.className='sc'
+    if(a){
+      var slow=a.ok&&isAnonSlow(a.ms)
+      var col=a.ok?(slow?'var(--yellow)':'var(--green)'):'var(--red)'
+      var barPct=a.ok&&a.ms!=null?Math.min(100,(a.ms/Math.max(slowBand*1.2,1))*100):100
+      var cached=a.source&&a.source!=='live'
+      var badge=a.ok?(slow?'slow':'ok'):'fail'
+      if(cached) badge='cached'
+      else if(s.anonset_refreshing&&a.source==='live') badge=a.ok?(slow?'slow':'ok'):'fail'
+      d.innerHTML='<div class="top2"><a class="blink name" href="/backend/'+e.id+'">'+esc(e.name)+'</a><span class="st '+(a.ok?(slow||cached?'yellow':'green'):'red')+'">'+badge+'</span></div>'+
+        '<div class="big" style="color:'+col+'">'+(a.ok?(a.ms/1000).toFixed(1)+'s':'—')+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px">'+(a.ok?fmt(a.coins)+' coins · '+(a.mb!=null?a.mb+' MB':'—')+' · group '+esc(a.group):esc(a.error||'no data'))+(cached?' · last-good':'')+(s.anonset_refreshing&&!cached?' · live':'')+'</div>'+
+        '<div class="bar"><span style="width:'+barPct+'%;background:'+col+'"></span></div>'+
+        '<div class="hashtag" style="margin-top:8px">setHash '+(a.setHash?esc(String(a.setHash).slice(0,18))+'…':'—')+(a.consistent===false?' <span class="bad">✗ differs</span>':(a.consistent===true?' <span class="ok">✓</span>':''))+'</div>'
+    } else {
+      var waitMsg=s.anonset_refreshing
+        ? 'Measuring now — heavy fetch can take ~1–2 min per host. Last-good will appear when ready.'
+        : 'No anon-set measurement yet — first heavy sweep still running (~1–2 min per host).'
+      d.innerHTML='<div class="top2"><a class="blink name" href="/backend/'+e.id+'">'+esc(e.name)+'</a><span class="op">'+(s.anonset_refreshing?'measuring…':'pending')+'</span></div><div style="font-size:11px;color:var(--muted);margin-top:8px">'+waitMsg+'</div>'
+    }
+    ac.appendChild(d)
+  })
+  var am=document.getElementById('anonmeta')
+  if(am){
+    if(s.anonset_refreshing) am.innerHTML='<span class="snapchip">refreshing</span> last-good + live as hosts finish'
+    else if(s.anonset_source==='last_good'&&s.anonset_checked_at) am.innerHTML='<span class="snapchip">cached</span> measured '+ago(s.anonset_checked_at)
+    else if(s.anonset_checked_at) am.innerHTML=(isSnapshot(s)?'<span class="snapchip">snapshot</span> measured ':'measured ')+ago(s.anonset_checked_at)
+    else am.innerHTML='no measurement yet · first sweep in progress'
+  }
+
+  var bw=document.getElementById('bwcompare')
+  if(bw){
+    var ready=(s.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.ok&&e.anonset.mb!=null})
+    // Only backends serving the consensus set can be compared as "the same set".
+    var withmb=ready.filter(function(e){return e.anonset.consistent!==false})
+    var outliers=ready.filter(function(e){return e.anonset.consistent===false})
+    if(!withmb.length){ bw.innerHTML='<div style="color:var(--muted);font-size:11px">No consistent anon-set sizes measured yet.</div>' }
+    else{
+      var mbs=withmb.map(function(e){return e.anonset.mb}), maxmb=Math.max.apply(null,mbs), minmb=Math.min.apply(null,mbs)
+      bw.innerHTML=withmb.slice().sort(function(a,b){return a.anonset.mb-b.anonset.mb}).map(function(e){
+        var mb=e.anonset.mb, pct=Math.max(4,(mb/maxmb)*100)
+        var tag=(mb===minmb&&minmb!==maxmb)?' <span class="ok">leanest</span>':((mb===maxmb&&minmb!==maxmb)?' <span class="warnc">heaviest</span>':'')
+        var col=mb===maxmb?'var(--yellow)':'var(--cyan)'
+        return '<div class="cmp-row"><span class="cn">'+esc(e.name)+'</span><div class="bar"><span style="width:'+pct+'%;background:'+col+'"></span></div><span class="mono" style="text-align:right">'+mb+' MB'+tag+'</span></div>'
+      }).join('')
+      if(minmb!==maxmb){ bw.innerHTML+='<div style="margin-top:11px;font-size:11px;color:var(--muted);line-height:1.6">Same anonymity set (~'+fmt(withmb[0].anonset.coins)+' coins, identical setHash across '+withmb.length+' backend'+(withmb.length===1?'':'s')+') served in <b style="color:var(--text)">'+minmb+'\u2013'+maxmb+' MB</b> depending on operator \u2014 a <b style="color:var(--ember2)">'+Math.round((maxmb/minmb-1)*100)+'%</b> bandwidth difference wallets pay for on mobile data.</div>' }
+      else { bw.innerHTML+='<div style="margin-top:11px;font-size:11px;color:var(--muted);line-height:1.6">All '+withmb.length+' backend'+(withmb.length===1?'':'s')+' serve the identical set (~'+fmt(withmb[0].anonset.coins)+' coins) at <b style="color:var(--text)">'+minmb+' MB</b>.</div>' }
+      if(outliers.length){ bw.innerHTML+='<div class="warn" style="margin-top:12px">\u26a0 '+outliers.length+' backend'+(outliers.length===1?'':'s')+' served a <b>different set</b> ('+outliers.map(function(e){return esc(e.name)}).join(', ')+') \u2014 excluded from the comparison above and flagged as a Spark inconsistency.</div>' }
+    }
+  }
+}
+
+function miniSpark(el,vals,color){
+  var w=el.clientWidth||110,h=el.clientHeight||34,pad=3
+  var s=sparkPath(vals,w,h,pad)
+  if(s.flat){el.innerHTML='<svg width="100%" height="'+h+'"><line x1="'+pad+'" y1="'+(h/2)+'" x2="'+(w-pad)+'" y2="'+(h/2)+'" stroke="'+color+'" stroke-opacity=".45" stroke-width="1.5"/></svg>';return}
+  el.innerHTML='<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" preserveAspectRatio="none"><path d="'+s.line+'" fill="none" stroke="'+color+'" stroke-width="1.6" stroke-linejoin="round"/></svg>'
+}
+
+function renderHistory(){
+  if(!H||!H.points){return}
+  var pts=H.points
+  document.getElementById('histmeta').textContent=pts.length+' poll'+(pts.length===1?'':'s')+' · this session'
+  stackedBars(document.getElementById('chart-health'),pts)
+  lineChart(document.getElementById('chart-latency'),pts.map(function(p){return p.avgLatency}),'var(--cyan)','ms')
+}
+
+// ---- per-backend detail page ----
+var KNOWN_BACKENDS={
+  'firo-core-0':'Firo Core electrumx',
+  'firo-core-1':'Firo Core electrumx01',
+  'firo-core-2':'Firo Core electrumx02',
+  'firo-core-3':'Firo Core electrumx03',
+  'stackwallet':'Stack Wallet',
+  'mathnodes':'MathNodes'
+}
+function metricSeries(id,key){ return (H&&H.points?H.points:[]).map(function(p){return p.ep&&p.ep[id]?p.ep[id][key]:null}) }
+
+function renderDetailLoading(id){
+  var el=document.getElementById('detail')
+  if(!el) return
+  var label=KNOWN_BACKENDS[id]||id
+  document.title=label+' · loading · FiroStatus'
+  el.innerHTML=
+    '<a class="back" href="/overview">\u2190 Back to overview</a>'+
+    '<div class="detail-loading">'+
+      '<div class="hero" style="margin-bottom:0">'+
+        '<div class="hk">Backend detail</div>'+
+        '<div class="hq">'+esc(label)+'</div>'+
+        '<div class="sub" style="margin-top:6px">registry <code>'+esc(id)+'</code></div>'+
+        '<div class="loadwrap" role="status" aria-live="polite">'+
+          '<span class="spin"></span>'+
+          '<span>Loading live stats — please wait…'+
+            '<span class="subline">Fetching fleet probes from firostatus.com. First paint can take a few seconds while Electrum tip / Spark checks finish.</span>'+
+          '</span>'+
+        '</div>'+
+        '<div class="skel-cards" aria-hidden="true"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>'+
+      '</div>'+
+      '<div class="panel" style="margin-top:16px"><div class="pbody" aria-hidden="true">'+
+        '<div class="skel skel-line"></div><div class="skel skel-line w2"></div><div class="skel skel-panel"></div>'+
+      '</div></div>'+
+    '</div>'
+}
+
+function renderDetail(id){
+  curDetail=id
+  window.curDetail=id
+  var el=document.getElementById('detail')
+  var eps=(S&&S.endpoints)||[]
+  var e=eps.filter(function(x){return x.id===id})[0]
+  var warming=!S || !eps.length || !!S.polling
+  if(!e){
+    if(warming || !S){ renderDetailLoading(id); return }
+    document.title='Not found · FiroStatus'
+    el.innerHTML=
+      '<a class="back" href="/overview">\u2190 Back to overview</a>'+
+      '<div class="panel"><div class="pbody">'+
+        '<div class="empty-t">Backend not found</div>'+
+        '<div class="empty-s" style="margin-top:8px">No registry endpoint with id <code>'+esc(id)+'</code>. '+
+        'Open <a class="blink" href="/backends">Backends</a> for the curated list.</div>'+
+      '</div></div>'
+    return
+  }
+  var a=e.anonset, col=statusColor(e.status)
+  var up=(HistAPI&&HistAPI.uptime&&HistAPI.uptime.endpoints&&HistAPI.uptime.endpoints[id])||null
+  var reasons=(window.FiroEnhance&&window.FiroEnhance.failReasons?window.FiroEnhance.failReasons(e):[])
+  var thr=(a&&a.ok&&a.ms>0&&a.mb!=null)?(a.mb/(a.ms/1000)).toFixed(2)+' MB/s':'—'
+  var band=slowThreshMs()
+  var slowHere=a&&a.ok&&isAnonSlow(a.ms)
+  var rel=e.status==='green'&&e.spark_consistent!==false&&a&&a.ok&&a.consistent===true&&!slowHere&&(e.tls_days_left==null||e.tls_days_left>=14)&&(up==null||up.pct_24h==null||up.pct_24h>=95)
+  var reasonHtml=reasons.map(function(r){
+    var cls=r==='healthy'?'ok':(/mismatch|fail|expired|unreachable|timeout|far behind/i.test(r)?'bad':'warn')
+    return '<span class="'+cls+'">'+esc(r)+'</span>'
+  }).join('')
+  document.title=String(e.name||id)+' · Firo Spark Sync Monitor'
+  var connectStr=e.host+':'+e.port
+  var pageUrl=location.origin+'/backend/'+encodeURIComponent(id)
+
+  var anonBlock = a ?
+    ('<div class="kv"><span class="k">Anon-set fetch time</span><span class="mono" style="color:'+(a.ok?(slowHere?'var(--yellow)':'var(--green)'):'var(--red)')+'">'+(a.ok?(a.ms/1000).toFixed(1)+'s'+(slowHere?' · slow vs fleet':'') :esc(a.error||'fail'))+'</span></div>'+
+     '<div class="kv"><span class="k">Anon-set size</span><span class="mono">'+(a.ok?fmt(a.coins)+' coins · '+(a.mb!=null?a.mb+' MB':'—'):'—')+'</span></div>'+
+     '<div class="kv"><span class="k">Throughput</span><span class="mono">'+esc(thr)+'</span></div>'+
+     '<div class="kv"><span class="k">Coin group</span><span class="mono">'+(a.group!=null?esc(a.group):'—')+(a.group!=null&&e.spark_latest_coin_id!=null&&a.group!==e.spark_latest_coin_id?' <span class="bad">≠ tip id</span>':'')+'</span></div>'+
+     '<div class="kv"><span class="k">setHash</span><span class="mono" style="font-size:10px;word-break:break-all;max-width:60%;text-align:right">'+esc(a.setHash||'—')+(a.consistent===true?' <span class="ok">✓</span>':(a.consistent===false?' <span class="bad">✗ differs</span>':''))+'</span></div>'+
+     '<div class="kv"><span class="k">Fleet setHash</span><span class="mono" style="font-size:10px">'+(S&&S.spark_sethash_consensus?esc(String(S.spark_sethash_consensus).slice(0,24))+'…':'—')+'</span></div>')
+    : '<div class="kv"><span class="k">Anon-set fetch</span><span class="mono">no measurement yet</span></div>'
+
+  var shWins=((HistAPI&&HistAPI.events&&HistAPI.events.sethash)||[]).filter(function(w){return (w.ids||[]).indexOf(id)>=0})
+  var shHtml=shWins.length
+    ? '<table class="minitable"><thead><tr><th>Start</th><th>End</th><th>Consensus</th></tr></thead><tbody>'+
+      shWins.slice().reverse().slice(0,8).map(function(w){
+        return '<tr><td class="mono">'+esc(String(w.start||'').replace('T',' ').slice(0,16))+'</td><td class="mono">'+esc(String(w.end||'').replace('T',' ').slice(0,16))+'</td><td class="mono">'+esc(w.consensus_short||'—')+'…</td></tr>'
+      }).join('')+'</tbody></table>'
+    : '<div class="empty"><div class="empty-t">No setHash divergence for this host</div><div class="empty-s">Windows appear when this backend disagreed with fleet consensus.</div></div>'
+
+  var o=apiOrigin()
+  var curlStatus="curl -sS "+o+"/api/status | jq '.endpoints[] | select(.id==\""+id+"\") | {name,status,lag,spark_consistent,anonset,tls_days_left,error}'"
+  var curlHist="curl -sS '"+o+"/api/history?id="+encodeURIComponent(id)+"&hours=24&limit=200' | jq '{uptime:.uptime.endpoints[\""+id+"\"], n:(.points|length), last:.points[-1]}'"
+
+  el.innerHTML=
+    '<a class="back" href="/overview">\u2190 Back to overview</a>'+
+    '<div class="hero"><div class="dhead"><div>'+
+      '<div class="hk">'+esc(e.operator)+' · registry <code>'+esc(id)+'</code></div>'+
+      '<div class="hq">'+esc(e.name)+'</div>'+
+      '<div class="sub" style="margin-top:4px">'+esc(e.host)+':'+esc(e.port)+(e.version?' · '+esc(e.version):'')+(e.error?' · <span class="bad">'+esc(e.error)+'</span>':'')+'</div>'+
+    '</div><span class="st '+e.status+'" style="font-size:12px">'+e.status+'</span></div>'+
+    '<div class="statrow" style="margin-top:12px">'+
+      '<div class="statpill"><div class="sv '+(rel?'risk-lo':'risk-mid')+'">'+(rel?'YES':'NO')+'</div><div class="sl">Reliable default?</div><div class="ss">green · Spark+setHash · not slow vs ~'+(band/1000).toFixed(0)+'s · TLS · uptime</div></div>'+
+      '<div class="statpill"><div class="sv" id="d-host-p50">—</div><div class="sl">Anon-set p50</div><div class="ss">this host · history</div></div>'+
+      '<div class="statpill"><div class="sv" id="d-host-p95">—</div><div class="sl">Anon-set p95</div><div class="ss">tail sync cost</div></div>'+
+      '<div class="statpill"><div class="sv" id="d-host-thr">'+esc(thr)+'</div><div class="sl">Throughput</div><div class="ss">latest fetch</div></div>'+
+    '</div>'+
+      '<div class="reasonchips">'+reasonHtml+
+      ((e.status==='yellow'||e.status==='red')?' <button type="button" class="diag-btn'+(e.status==='red'?' r':'')+'" data-diagnose="'+esc(id)+'">Diagnose</button>':'')+
+      '</div>'+
+    '<div class="cards" style="margin-top:14px">'+
+      '<div class="card"><div class="n">'+fmt(e.height)+'</div><div class="l">Height</div><div class="s">ref '+(S&&S.reference!=null?fmt(S.reference):'—')+'</div></div>'+
+      '<div class="card"><div class="n" style="color:'+col+'">'+(e.lag==null?'—':e.lag+' blk')+'</div><div class="l">Lag vs tip</div></div>'+
+      '<div class="card"><div class="n" style="color:'+col+'">'+ms(e.latency_ms)+'</div><div class="l">Probe RTT</div><div class="s">single region</div></div>'+
+      '<div class="card"><div class="n">'+(e.spark_latest_coin_id==null?'—':esc(e.spark_latest_coin_id))+'</div><div class="l">Spark coin id</div><div class="s">fleet '+(S&&S.spark_consensus!=null?esc(S.spark_consensus):'—')+(e.spark_consistent===true?' · ✓':(e.spark_consistent===false?' · ✗':''))+'</div></div>'+
+      '<div class="card"><div class="n">'+(e.tls_days_left==null?'—':e.tls_days_left+'d')+'</div><div class="l">TLS days left</div><div class="s">'+(e.tls_valid_to?esc(String(e.tls_valid_to).slice(0,19)):'—')+'</div></div>'+
+      '<div class="card"><div class="n">'+(up?pctStr(up.pct_24h):'—')+'</div><div class="l">Uptime 24h</div><div class="s">7d '+(up?pctStr(up.pct_7d):'—')+(up&&up.samples_24h!=null?' · '+fmt(up.samples_24h)+' samples':'')+'</div></div>'+
+    '</div></div>'+
+
+    '<div class="panel"><div class="phead"><h2>Operator &amp; connection</h2><span class="h">public Electrum · privacy-safe</span></div><div class="pbody">'+
+      '<div class="kv"><span class="k">Operator</span><span class="mono">'+esc(e.operator)+'</span></div>'+
+      '<div class="kv"><span class="k">Used by</span><span>'+usedByHtml(e.used_by)+'</span></div>'+
+      '<div class="kv"><span class="k">Connect</span><span class="mono">'+esc(e.host)+':'+esc(e.port)+' (TLS)</span></div>'+
+      '<div class="kv"><span class="k">Registry id</span><span class="mono">'+esc(id)+'</span></div>'+
+      '<div class="kv"><span class="k">Server version</span><span class="mono">'+(e.version?esc(e.version):'—')+'</span></div>'+
+      '<div class="kv"><span class="k">Role</span><span class="mono">'+(e.operator==='Firo Core'?'Core public default':'Community / wallet operator')+'</span></div>'+
+      '<div class="kv"><span class="k">Monitor region</span><span class="mono">single probe host (not global RTT)</span></div>'+
+      '<div class="toolrow" style="margin-top:12px">'+
+        '<button type="button" class="tbtn pri" data-copy="'+esc(connectStr)+'">Copy connect</button>'+
+        '<button type="button" class="tbtn" data-copy="'+esc(pageUrl)+'">Copy page link</button>'+
+        '<button type="button" class="tbtn" data-copy="'+esc(curlStatus)+'">Copy status jq</button>'+
+        '<button type="button" class="tbtn" data-copy="'+esc(curlHist)+'">Copy history jq</button>'+
+        '<a class="tbtn" href="/api/history?id='+encodeURIComponent(id)+'&hours=24" target="_blank" rel="noopener">Open history JSON</a>'+
+      '</div>'+
+    '</div></div>'+
+
+    '<div class="panel"><div class="phead"><h2>Vs fleet · now</h2><span class="h">is this host slow, or is everyone?</span></div><div class="pbody"><div class="statrow" id="d-fleet-compare" style="margin-top:0"></div></div></div>'+
+
+    '<div class="panel"><div class="phead"><h2>Status history ribbon</h2><span class="h">green / yellow / red over time</span></div><div class="pbody"><div class="status-ribbon" id="d-status-ribbon"></div><p class="note" style="margin-top:8px;margin-bottom:0">Each segment is a history sample for this backend. Hover a slice for timestamp.</p></div></div>'+
+
+    '<div class="panel"><div class="phead"><h2>Durable history charts</h2><span class="h">SQLite · /api/history?id='+esc(id)+'</span></div><div class="pbody">'+
+      '<div id="d-hist-load" role="status" aria-live="polite"><span class="spin"></span><span>Loading durable history — please wait…</span></div>'+
+      '<div class="chart-grid">'+
+        '<div><div class="chart-lbl">Tip lag (blocks)</div><div class="chart-box"><canvas id="d-hist-lag"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Probe RTT (ms)</div><div class="chart-box"><canvas id="d-hist-rtt"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Anon-set fetch (s)</div><div class="chart-box"><canvas id="d-hist-anon"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Anon-set size (MB)</div><div class="chart-box"><canvas id="d-hist-mb"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Chain height</div><div class="chart-box"><canvas id="d-hist-height"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Anon-set coins</div><div class="chart-box"><canvas id="d-hist-coins"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Spark consistent (1/0)</div><div class="chart-box"><canvas id="d-hist-spark"></canvas></div></div>'+
+        '<div><div class="chart-lbl">Spark coin id</div><div class="chart-box"><canvas id="d-hist-sparkid"></canvas></div></div>'+
+      '</div>'+
+      '<div style="margin-top:12px"><div class="chart-lbl">TLS days left</div><div class="chart-box" style="height:160px"><canvas id="d-hist-tls"></canvas></div></div>'+
+    '</div></div>'+
+
+    '<div class="panel"><div class="phead"><h2>setHash divergence (this host)</h2><span class="h">from events.sethash</span></div><div class="pbody">'+shHtml+'</div></div>'+
+    '<div class="panel"><div class="phead"><h2>Spark anonymity-set · latest</h2><span class="h">'+(S&&S.anonset_checked_at?((isSnapshot(S)?'snapshot · ':'')+'measured '+ago(S.anonset_checked_at)):'—')+'</span></div><div class="pbody">'+anonBlock+
+      '<p class="note" style="margin-top:12px;margin-bottom:0">Campfire/Stack sync this set over ElectrumX. Same seed in two wallets can cause Spark spend errors — clear ElectrumX cache in Settings. <a href="https://firo.org/2025/01/01/campfire203.html" target="_blank" rel="noopener">Campfire note</a></p>'+
+    '</div></div>'+
+    '<details class="sec-details"><summary><span>This browser session · legacy sparklines</span><span class="h">secondary</span></summary><div class="pbody">'+
+      '<div class="grid2" style="margin-top:0">'+
+        '<div><div class="chart-lbl">Probe RTT</div><div id="d-lat"></div></div>'+
+        '<div><div class="chart-lbl">Lag</div><div id="d-lag"></div></div>'+
+      '</div><div class="chart-lbl" style="margin-top:12px">Height</div><div id="d-hgt"></div>'+
+    '</div></details>'
+
+  lineChart(document.getElementById('d-lat'), metricSeries(id,'lat'), 'var(--cyan)', 'ms')
+  lineChart(document.getElementById('d-lag'), metricSeries(id,'lag'), col, '')
+  lineChart(document.getElementById('d-hgt'), metricSeries(id,'height'), 'var(--ember)', '')
+
+  // Show spinners until first paint; server usually serves pre-cached history instantly.
+  if(window.FiroEnhance&&window.FiroEnhance.setDetailChartsLoading){
+    window.FiroEnhance.setDetailChartsLoading('Loading durable history…','Please wait — cached samples first, then freshest rebuild.')
+  }
+  if(HistAPI&&window.FiroEnhance&&window.FiroEnhance.paintDetailCharts){
+    window.FiroEnhance.paintDetailCharts(id, HistAPI)
+    var note0=document.getElementById('d-hist-load')
+    if(note0){
+      note0.style.display=''
+      note0.innerHTML='<span class="spin"></span><span>Showing cached history · loading freshest samples…</span>'
+    }
+  }
+  function applyDetailHistory(h){
+    if(curDetail!==id) return
+    if(window.FiroEnhance&&window.FiroEnhance.paintDetailCharts){
+      window.FiroEnhance.paintDetailCharts(id, h||HistAPI)
+    }
+    var note=document.getElementById('d-hist-load')
+    if(!note) return
+    var msg=historyFreshNote(h)
+    if(h&&h.cache&&(h.cache.refreshing||(h.cache.age_s!=null&&h.cache.age_s>60))){
+      note.style.display=''
+      note.innerHTML='<span class="spin"></span><span>'+esc(msg||'Loading freshest samples…')+'</span>'
+    } else if(msg&&h&&h.cache&&h.cache.hit){
+      note.style.display=''
+      note.innerHTML='<span>'+esc(msg)+'</span>'
+      setTimeout(function(){ if(curDetail===id&&note) note.style.display='none' },2200)
+    } else {
+      note.style.display='none'
+    }
+  }
+  fetch('/api/history?id='+encodeURIComponent(id)+'&hours=168&limit=800').then(function(r){return r.ok?r.json():null}).then(function(h){
+    applyDetailHistory(h)
+    // One follow-up if a background rebuild was in flight.
+    if(h&&h.cache&&h.cache.refreshing){
+      setTimeout(function(){
+        if(curDetail!==id) return
+        fetch('/api/history?id='+encodeURIComponent(id)+'&hours=168&limit=800').then(function(r){return r.ok?r.json():null}).then(applyDetailHistory).catch(function(){})
+      },2500)
+    }
+  }).catch(function(){
+    if(curDetail!==id) return
+    if(window.FiroEnhance&&window.FiroEnhance.paintDetailCharts) window.FiroEnhance.paintDetailCharts(id, HistAPI)
+    else if(window.FiroEnhance&&window.FiroEnhance.setDetailChartsLoading){
+      window.FiroEnhance.setDetailChartsLoading('History unavailable','Could not reach /api/history — retrying on next refresh.')
+    }
+  })
+}
+
+var TAB_PATHS={overview:1,backends:1,spark:1,developers:1,roadmap:1,about:1}
+function showTab(v){
+  document.querySelectorAll('.tab').forEach(function(t){var on=t.dataset.v===v;t.classList.toggle('active',on);t.setAttribute('aria-selected',on?'true':'false')})
+  document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active')})
+  var el=document.getElementById('v-'+v); if(el)el.classList.add('active')
+}
+function navTo(path, replace){
+  var next=path||'/'
+  if(!next.startsWith('/')) next='/'+next
+  if(replace) history.replaceState(null,'',next)
+  else if(location.pathname+location.search+location.hash!==next) history.pushState(null,'',next)
+  route()
+}
+function migrateLegacyHash(){
+  var h=location.hash||''
+  if(!h||h==='#') return false
+  if(h.indexOf('#/backend/')===0){
+    history.replaceState(null,'','/backend/'+h.slice('#/backend/'.length))
+    return true
+  }
+  var frag=decodeURIComponent(h.replace(/^#\/?/,''))
+  if(frag==='compare'){ history.replaceState(null,'','/overview#compare'); return true }
+  if(TAB_PATHS[frag]){ history.replaceState(null,'','/'+frag); return true }
+  return false
+}
+function route(){
+  if(migrateLegacyHash()){ /* path updated */ }
+  var path=(location.pathname||'/').replace(/\/+$/,'')||'/'
+  var m=path.match(/^\/backend\/([^/]+)$/)
+  if(m){
+    var id=decodeURIComponent(m[1])
+    document.getElementById('home').style.display='none'
+    document.getElementById('detail').style.display=''
+    window.scrollTo(0,0)
+    renderDetail(id)
+    return
+  }
+  curDetail=null
+  window.curDetail=null
+  document.title='Firo Spark Sync Monitor'
+  document.getElementById('detail').style.display='none'
+  document.getElementById('home').style.display=''
+  var v=path==='/'?'overview':path.replace(/^\//,'')
+  if(v==='compare'){
+    showTab('overview')
+    if(location.pathname!=='/overview') history.replaceState(null,'','/overview#compare')
+    setTimeout(function(){ var el=document.getElementById('compare'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}) },60)
+    return
+  }
+  if(!TAB_PATHS[v]) v='overview'
+  showTab(v)
+  if(location.hash==='#compare'&&v==='overview'){
+    setTimeout(function(){ var el=document.getElementById('compare'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}) },60)
+  }
+}
+window.addEventListener('popstate',route)
+window.addEventListener('hashchange',function(){ if(migrateLegacyHash()) route() })
+
+document.getElementById('tabs').addEventListener('click',function(ev){
+  var b=ev.target.closest('.tab'); if(!b)return
+  navTo('/'+b.dataset.v)
+})
+// Soft-navigate in-app path links (avoid full reload)
+document.addEventListener('click',function(ev){
+  var a=ev.target.closest('a[href]')
+  if(!a||a.target==='_blank'||ev.metaKey||ev.ctrlKey||ev.shiftKey||ev.altKey) return
+  var href=a.getAttribute('href')||''
+  if(!href.startsWith('/')||href.startsWith('//')||href.startsWith('/api/')) return
+  var u
+  try{ u=new URL(href,location.origin) }catch(e){ return }
+  if(u.origin!==location.origin) return
+  var p=u.pathname.replace(/\/+$/,'')||'/'
+  var isTab=p==='/'||TAB_PATHS[p.slice(1)]
+  var isDetail=/^\/backend\/[^/]+$/.test(p)
+  if(!isTab&&!isDetail&&p!=='/compare') return
+  ev.preventDefault()
+  navTo(p+(u.hash||''))
+})
+document.getElementById('tabs').addEventListener('keydown',function(ev){
+  if(ev.key!=='ArrowRight'&&ev.key!=='ArrowLeft'&&ev.key!=='Home'&&ev.key!=='End') return
+  var tabs=[].slice.call(document.querySelectorAll('#tabs .tab'))
+  if(!tabs.length) return
+  var i=tabs.indexOf(document.activeElement)
+  if(i<0) i=tabs.findIndex(function(t){return t.classList.contains('active')})
+  if(ev.key==='Home') i=0
+  else if(ev.key==='End') i=tabs.length-1
+  else if(ev.key==='ArrowRight') i=(i+1)%tabs.length
+  else i=(i-1+tabs.length)%tabs.length
+  ev.preventDefault()
+  tabs[i].focus()
+  navTo('/'+tabs[i].dataset.v)
+})
+
+// Tooltips: portal to <body> with position:fixed so .tblwrap / overflow parents cannot clip them.
+;(function(){
+  var liveTip=null
+  var portal=null
+  function ensurePortal(){
+    if(portal) return portal
+    portal=document.createElement('div')
+    portal.className='tt-portal'
+    portal.setAttribute('role','tooltip')
+    document.body.appendChild(portal)
+    return portal
+  }
+  function hideTip(){
+    if(liveTip){ liveTip.classList.remove('tip-live','open'); liveTip=null }
+    if(portal){
+      portal.classList.remove('show','place-above','place-below')
+      portal.innerHTML=''
+    }
+  }
+  function placeTip(tip){
+    if(!tip) return
+    var src=tip.querySelector('.tt')
+    if(!src) return
+    var p=ensurePortal()
+    if(liveTip && liveTip!==tip){ liveTip.classList.remove('tip-live','open') }
+    liveTip=tip
+    tip.classList.add('tip-live')
+    p.innerHTML=src.innerHTML
+    p.classList.add('show')
+    p.classList.remove('place-above','place-below')
+    // Measure after content is in the portal
+    var r=tip.getBoundingClientRect()
+    var tw=p.offsetWidth||236
+    var th=p.offsetHeight||80
+    var gap=10
+    var left=Math.round(r.left+r.width/2-tw/2)
+    left=Math.max(8, Math.min(left, window.innerWidth-tw-8))
+    var spaceAbove=r.top
+    var placeBelow=spaceAbove < th+gap+12
+    p.style.left=left+'px'
+    if(placeBelow){
+      p.classList.add('place-below')
+      p.style.top=Math.round(r.bottom+gap)+'px'
+    } else {
+      p.classList.add('place-above')
+      p.style.top=Math.round(r.top-th-gap)+'px'
+    }
+  }
+  document.addEventListener('mouseover',function(ev){
+    var tip=ev.target.closest('.tip')
+    if(!tip) return
+    placeTip(tip)
+  })
+  document.addEventListener('mouseout',function(ev){
+    var tip=ev.target.closest('.tip')
+    if(!tip || tip!==liveTip) return
+    var rel=ev.relatedTarget
+    if(rel && tip.contains(rel)) return
+    // Keep open if tap-toggled
+    if(tip.classList.contains('open')) return
+    hideTip()
+  })
+  document.addEventListener('focusin',function(ev){
+    var tip=ev.target.closest('.tip')
+    if(tip) placeTip(tip)
+  })
+  document.addEventListener('focusout',function(ev){
+    var tip=ev.target.closest('.tip')
+    if(!tip || tip!==liveTip) return
+    if(tip.classList.contains('open')) return
+    var rel=ev.relatedTarget
+    if(rel && tip.contains(rel)) return
+    hideTip()
+  })
+  document.addEventListener('scroll',function(){ if(liveTip) placeTip(liveTip) }, true)
+  window.addEventListener('resize',function(){ if(liveTip) placeTip(liveTip) })
+  // Tap-to-toggle (touch). Tap outside to dismiss.
+  document.addEventListener('click',function(ev){
+    var tip=ev.target.closest('.tip')
+    document.querySelectorAll('.tip.open').forEach(function(t){ if(t!==tip) t.classList.remove('open') })
+    if(tip){
+      ev.stopPropagation()
+      var willOpen=!tip.classList.contains('open')
+      if(willOpen){ tip.classList.add('open'); placeTip(tip) }
+      else hideTip()
+    } else if(!ev.target.closest('.tt-portal')){
+      hideTip()
+    }
+  })
+})()
+
+var lastOk=null
+function setConn(ok){
+  var b=document.getElementById('connbar'); if(!b)return
+  if(ok){ b.style.display='none'; return }
+  b.style.display='block'
+  b.innerHTML='\u26a0 Couldn\u2019t reach the monitor API \u2014 retrying every 20s.'+(S&&S.summary?(' Showing the last good snapshot'+(lastOk?' from '+new Date(lastOk).toLocaleTimeString():'')+'.'):'')
+}
+var warmRetry=null
+function tick(){
+  // Cold /api/status can exceed 10s when Electrum probes are slow — keep client wait
+  // Long enough for fleet tip probes; short enough for snappy UI refresh.
+  var ctl=('AbortController' in window)?new AbortController():null
+  var to=ctl?setTimeout(function(){ try{ctl.abort()}catch(e){} },35000):null
+  fetch('/api/status',ctl?{signal:ctl.signal}:undefined).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json() })
+    .then(function(s){ if(to)clearTimeout(to); S=s; lastOk=Date.now(); setConn(true); recordHist(s); render(s); renderHistory(); if(curDetail) renderDetail(curDetail)
+      if(!(s.endpoints&&s.endpoints.length)){ if(!warmRetry) warmRetry=setTimeout(function(){ warmRetry=null; tick() },2500) }
+      else if(warmRetry){ clearTimeout(warmRetry); warmRetry=null } })
+    .catch(function(){
+      if(to)clearTimeout(to); setConn(false)
+      var lm=document.getElementById('loadmsg')
+      if(lm&&!S){ var t=lm.querySelector('span:last-child'); if(t) t.textContent='API probe timed out or failed — retrying…' }
+    })
+}
+try {
+  H={points:loadHist()}; renderHistory()
+  // Status first — never gate fleet paint on history/charts.
+  tick(); setInterval(tick,20000)
+  fetchCi(); setInterval(fetchCi,20000)
+  route()
+  // Defer durable history until after first status paint (or 1.5s fallback).
+  var histStarted=false
+  function startHistoryLater(){
+    if(histStarted) return
+    histStarted=true
+    fetchHistory(); setInterval(fetchHistory,60000)
+  }
+  var histBoot=setTimeout(startHistoryLater,1500)
+  var histWatch=setInterval(function(){
+    if(S&&S.endpoints&&S.endpoints.length){
+      clearInterval(histWatch); clearTimeout(histBoot); startHistoryLater()
+    }
+  },150)
+  window.addEventListener('resize',function(){ renderHistory(); if(S) render(S); if(curDetail) renderDetail(curDetail) })
+} catch(err) { console.error('init error', err) }
+
+// ================= Monitor assistant (FAQ + live status) =================
+// Fully client-side. Keyword-matched knowledge base + answers derived from the
+// live /api/status snapshot (S). No external calls, no data leaves the browser.
+(function(){
+  var body=document.getElementById('cbody'), input=document.getElementById('cinput')
+  var fab=document.getElementById('fab'), wrap=document.getElementById('chatwrap')
+  var cclose=document.getElementById('cclose')
+  if(!fab||!wrap||!body){ console.error('assistant: missing DOM nodes'); return }
+  var greeted=false
+  function addMsg(html,who){ var d=document.createElement('div'); d.className='msg '+(who||'bot'); d.innerHTML=html; body.appendChild(d); body.scrollTop=body.scrollHeight; return d }
+  function openChat(){ wrap.classList.add('open'); fab.style.display='none'; if(input)input.focus(); if(!greeted){ greeted=true; addMsg("Hi — monitor assistant for the Firo Electrum fleet. Ask about <b>Spark / anon-set / setHash</b>, wallets (Campfire, Stack, Electrum-Firo), TLS, charts &amp; history, FCS funding, community links, or <b>live status</b>. Tap a chip or type.") } }
+  function closeChat(){ wrap.classList.remove('open'); fab.style.display='' }
+  fab.addEventListener('click',openChat)
+  if(cclose)cclose.addEventListener('click',closeChat)
+
+  function liveStatus(){
+    if(!S||!S.summary) return "I'm still fetching the live snapshot — give it a second and ask again."
+    var sm=S.summary, st=S.stats||{}
+    var line='Right now <b>'+sm.green+'/'+sm.total+'</b> backends are healthy'
+    if(sm.yellow) line+=', '+sm.yellow+' degraded'
+    if(sm.red) line+=', '+sm.red+' critical'
+    line+='. Median latency <b>'+ms(st.median_latency)+'</b>, reference tip <b>'+fmt(S.reference)+'</b>, active Spark coin group <b>'+(S.spark_consensus==null?'—':S.spark_consensus)+'</b>.'
+    var mism=(S.endpoints||[]).filter(function(e){return e.spark_consistent===false})
+    var setm=(S.endpoints||[]).filter(function(e){return e.anonset&&e.anonset.consistent===false})
+    if(mism.length) line+=' &#9888; '+mism.length+' backend(s) report a different Spark coin id than consensus.'
+    if(setm.length) line+=' &#9888; '+setm.length+' backend(s) have divergent anon-set setHash (yellow even if tip lag is 0).'
+    return line
+  }
+  function liveAnon(){
+    if(!S||!S.stats) return "No anon-set measurement loaded yet."
+    var st=S.stats
+    if(st.anonset_coins==null) return "Anon set fetch health is still loading. See the <b>Spark health</b> tab in a moment."
+    return 'Latest anon set (group '+(S.spark_consensus)+'): <b>'+fmt(st.anonset_coins)+' coins</b>, ~<b>'+st.anonset_mb+' MB</b> avg per full fetch, median serve time <b>'+ms(st.anonset_ms)+'</b>'+(st.anonset_slow?', '+st.anonset_slow+' backend(s) slow/failed':'')+'. See the <b>Spark health</b> tab.'
+  }
+  function liveTls(){
+    if(!S||!S.endpoints) return 'TLS data still loading.'
+    var warn=(S.endpoints||[]).filter(function(e){return e.tls_days_left!=null&&e.tls_days_left<14})
+    if(!warn.length) return 'All measured backends have TLS ≥14 days remaining.'
+    return 'TLS attention: '+warn.map(function(e){return esc(e.name)+' ('+(e.tls_days_left<0?'expired':e.tls_days_left+'d')+')'}).join(', ')+'.'
+  }
+
+  var KB=[
+    {k:['what is spark','lelantus','privacy protocol','spark address','sm address'],a:"<b>Lelantus Spark</b> is Firo’s privacy protocol (mainnet since Jan 2024). Spark txs hide sender, receiver, and amounts. Light wallets must download the <i>Spark anonymity set</i> from ElectrumX — often tens of MB — which is why this monitor tracks anon-set fetch health, not just height. <a href='https://firo.org/2024/01/18/spark-is-live.html' target='_blank' rel='noopener'>Spark is live</a>"},
+    {k:['what is','what does','purpose','about this','explain','overview'],a:"A community monitor for public <b>Firo Electrum backends</b>. Flagship: <b>Spark anon set fetch health</b> and <b>setHash</b> consistency, plus tip lag and TLS expiry. Built for wallet/SDK teams and operators. See <b>About</b>."},
+    {k:['anon','anonymity','sparkanon','set fetch','fetch health','bottleneck','why spark','sync slow','slow sync'],a:"Firo light wallets download the Spark <b>anonymity set</b> for the active coin group (often tens of thousands of coins / tens of MB, 15 to 40s+ to serve). A backend can be green on height and still fail Spark sync. We fully fetch it, time it, and cross check <code>setHash</code>. <br><br><i>Live:</i> ",live:'anon'},
+    {k:['sethash','set hash','consistency','mismatch','fork','divergence'],a:"<code>setHash</code> fingerprints the Spark anonymity set a backend serves. If backends disagree for the same coin group, wallets may see inconsistent Spark state. Tip lag alone does not catch that. Divergence windows (when history exists) appear on the <b>Spark health</b> tab."},
+    {k:['tip','lag','height','stuck'],a:"<b>Tip lag</b> = how far a backend’s chain tip is behind the fleet reference tip. High lag can stall wallets. Separately, Spark sync can stall because the <em>anon-set download</em> is slow/failing even when height looks fine — check both. Durable tip-lag charts are on <b>Overview</b>."},
+    {k:['tls','ssl','certificate','50002','cert'],a:"Public ElectrumX usually exposes TLS on port <b>50002</b>. This monitor checks cert expiry: &lt;14 days → yellow, expired → red. See the TLS countdown strip on Overview.<br><br><i>Live:</i> ",live:'tls'},
+    {k:['campfire','stack','which wallet','qt','electrum firo','hardware'],a:"<b>Campfire</b> (official) and <b>Stack Wallet</b> use ElectrumX with full Spark. <b>Firo QT</b> is the full node. <b>Electrum-Firo</b> is a light/HW wallet with limited Spark today (e.g. Spark spend → transparent); fuller Spark is still in progress per forum. <a href='https://firo.org/get-firo/download/' target='_blank' rel='noopener'>Downloads</a>"},
+    {k:['cache','same seed','spend error','pagination'],a:"Official Campfire guidance: do not use the <b>same seed in two wallets at once</b> (Spark spend errors). Fix path includes clearing the <b>ElectrumX cache</b> in Settings. Campfire also added <b>pagination</b> for more resilient anon-set downloads. <a href='https://firo.org/2025/01/01/campfire203.html' target='_blank' rel='noopener'>Campfire v2.0.3 notes</a>"},
+    {k:['privacy','private','safe','keys','address','wallet data','tracking','collect','what do you collect'],a:"Probes use public Electrum methods only (version, headers, Spark coin-group / anon-set). <b>No wallet addresses, keys, or personal data</b>. Ops health board — not a wallet and not a privacy guarantee for your funds."},
+    {k:['different','1209k','existing','competitor','already','unique','novel','why fund'],a:"Height-only trackers miss the Spark path. This tool measures <b>full anon-set fetch time/size</b> and fleet <code>setHash</code> so the community can see backends that look healthy on tip but stall Spark sync."},
+    {k:['budget','cost','how much','price','2000','2,000','money','funding amount','firo amount','payment','paid','fcs','funding','proposal','grant'],a:"FCS proposal by <b>panagot</b>: ~<b>$2,000 / 3,200 FIRO</b>, 50/50 milestones, paid after <b>verification</b>. Status: funded, WIP. <a href='https://funding.firo.org/proposals/zz-noimg3-panagot' target='_blank' rel='noopener'>Funding</a> · <a href='https://forum.firo.org/t/fcs-proposal-zz-noimg3/4350' target='_blank' rel='noopener'>Forum</a>"},
+    {k:['milestone','m1','m2','roadmap','timeline','deliver','when','how long','schedule','hardening','left','work left','funded'],a:"FCS proposal is <b>funded and WIP</b>. <b>Live:</b> <a href='https://firostatus.com/' target='_blank' rel='noopener'>firostatus.com</a> + MIT source on <a href='https://gitlab.com/panagiotispollis/firostatus' target='_blank' rel='noopener'>GitLab</a>. Prefer <code>/api/ci</code> <b>spark_ok</b>. <b>M2</b> starts after M1 verification / first installment. See <b>Roadmap</b>."},
+    {k:['who','you','author','experience','skills','panagot','team','background'],a:"Built by <b>panagot</b>, an independent engineer focused on privacy infrastructure. Always-on build probes the public Firo Electrum fleet."},
+    {k:['license','mit','open source','open-source','github','gitlab','code','repo','source'],a:"License is MIT. Public source: <a href='https://gitlab.com/panagiotispollis/firostatus' target='_blank' rel='noopener'>gitlab.com/panagiotispollis/firostatus</a>. Live board: <a href='https://firostatus.com/' target='_blank' rel='noopener'>firostatus.com</a>. Upstream Firo org (not this monitor): <a href='https://github.com/firoorg' target='_blank' rel='noopener'>github.com/firoorg</a>"},
+    {k:['which server','which backend','backends','electrum','servers','list','registry','endpoints','electrumx'],a:"Defaults wallets use (SSL <code>50002</code>): <code>electrumx*.firo.org</code>, <code>firo.stackwallet.com</code>, <code>firo.mathnodes.com</code>. See <b>Backends</b>. A host can be fine on headers yet fail Spark anon-set fetch."},
+    {k:['status model','green','yellow','red','classification','healthy mean','degraded','critical'],a:"<b>green</b>: reachable, ≤2 blocks behind, Spark id + setHash match, probe RTT not a fleet outlier, TLS ≥14d. <b>yellow</b>: tip lag / RTT outlier / Spark mismatch / TLS &lt;14d. <b>red</b>: unreachable, &gt;100 blocks behind, or TLS expired. Prefer <code>/api/ci spark_ok</code>."},
+    {k:['api','json','machine','integrate','consume','feed','developer','sdk','typescript','chart','graphs','history'],a:"JSON on <a href='https://firostatus.com/'>firostatus.com</a>: <a href='/api/status'>/api/status</a>, <a href='/api/ci'>/api/ci</a>, <a href='/api/spark'>/api/spark</a>, <a href='/api/history'>/api/history</a>, <a href='/api/health'>/api/health</a>. Overview charts use Chart.js + SQLite history. Details on <b>Developers</b>."},
+    {k:['who uses','who is this for','users','audience','wallet team','operators'],a:"<b>Main:</b> wallet/SDK teams and Electrumx operators. <b>Secondary:</b> public transparency if Spark sync stalls. Not an in-wallet server picker."},
+    {k:['vs sdk','versus sdk','my sdk','wallet sdk','typescript sdk','overlap','replace sdk'],a:"A wallet SDK talks to <b>one</b> Electrum host and does real Spark sync. This monitor watches the <b>fleet</b> so apps need not each re-download tens of MB for monitoring. <b>Complement, not a replacement.</b>"},
+    {k:['history','durable','uptime','multi-day','7d','24h','30d','database','sqlite'],a:"Always-on SQLite powers <code>/api/history</code>, 24h/7d uptime %, tip-lag / fleet / anon-set charts, and setHash divergence windows. Browser session charts are secondary."},
+    {k:['alert','notification','telegram','discord','webhook','notify'],a:"Opt-in Telegram / Discord / webhook alerts for red status or Spark mismatch are <b>Milestone 2</b>. Community chat today: <a href='https://t.me/firoorg' target='_blank' rel='noopener'>Telegram</a>, <a href='https://discord.com/invite/TGZPRbRT3Y' target='_blank' rel='noopener'>Discord</a>."},
+    {k:['preview','limit','snapshot','why snapshot','serverless','always-on','live mode'],a:"On <b>firostatus.com</b> the badge is <b>Always-on · live</b> (continuous anon-set + history). That production board is the source of truth for CFC verification."},
+    {k:['community','forum','discuss','reach','support','help','reddit','twitter','x.com','social'],a:"Official: <a href='https://forum.firo.org/' target='_blank' rel='noopener'>Forum</a>, <a href='https://t.me/firoorg' target='_blank' rel='noopener'>Telegram</a>, <a href='https://discord.com/invite/TGZPRbRT3Y' target='_blank' rel='noopener'>Discord</a> (#support), <a href='https://www.reddit.com/r/FiroProject/' target='_blank' rel='noopener'>Reddit</a>, <a href='https://twitter.com/firoorg' target='_blank' rel='noopener'>X/@firoorg</a>, <a href='https://firo.org/guide/' target='_blank' rel='noopener'>Guides</a>. This FCS proposal thread: <a href='https://forum.firo.org/t/fcs-proposal-zz-noimg3/4350' target='_blank' rel='noopener'>#4350</a>."},
+    {k:['contact'],a:"Product discussion: Firo forum FCS thread. Support for wallets: Discord #support / Telegram (see firo.org guides)."}
+  ]
+  function answer(q){
+    var t=(q||'').toLowerCase().trim()
+    if(!t) return "Ask me anything about the monitor — try one of the suggestions below."
+    if(/(how many|are up|is up|down right now|current status|live status|status now|right now|reachable now|fleet status|healthy now)/.test(t)) return liveStatus()
+    if(/(latency now|how fast|speed now)/.test(t)) return S&&S.stats? "Median latency now is <b>"+ms(S.stats.median_latency)+"</b> (fastest "+ms(S.stats.fastest)+", slowest "+ms(S.stats.slowest)+").":liveStatus()
+    if(/(coin group|reference tip|chain tip|current height)/.test(t)) return liveStatus()
+    if(/tls.*(now|status|left|expire)/.test(t)) return liveTls()
+    var best=null,bestScore=0
+    KB.forEach(function(item){ var sc=0; item.k.forEach(function(k){ if(t.indexOf(k)>=0) sc+=k.length }); if(sc>bestScore){bestScore=sc;best=item} })
+    if(best&&bestScore>0){
+      var out=best.a
+      if(best.live==='anon') out+=liveAnon()
+      if(best.live==='tls') out+=liveTls()
+      return out
+    }
+    return "Not sure on that one. Try: <b>Spark</b>, <b>setHash</b>, <b>wallets</b>, <b>TLS</b>, <b>charts/history</b>, <b>FCS funding</b>, <b>community</b>, or <b>live status</b>."
+  }
+  function ask(q){ addMsg(esc(q),'me'); setTimeout(function(){ addMsg(answer(q)) },160) }
+
+  var chips=[
+    ['What is Spark?','what is spark'],
+    ['Live status','live status now'],
+    ['Anon-set now','anonymity set fetch health'],
+    ['setHash?','setHash consistency'],
+    ['Which wallets?','campfire stack wallets'],
+    ['TLS expiry?','tls certificate status'],
+    ['FCS funding','fcs funding proposal'],
+    ['Community links','community forum telegram'],
+    ['Privacy-safe?','privacy safe keys']
+  ]
+  var qc=document.getElementById('qchips')
+  chips.forEach(function(c){ var b=document.createElement('button'); b.className='qchip'; b.textContent=c[0]; b.onclick=function(){ ask(c[1]) }; qc.appendChild(b) })
+  function send(){ var v=input.value; if(!v.trim())return; input.value=''; ask(v) }
+  document.getElementById('csend').onclick=send
+  input.addEventListener('keydown',function(e){ if(e.key==='Enter') send() })
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape' && wrap.classList.contains('open')) closeChat() })
+})()
+</script>
+</body>
+</html>
