@@ -12,7 +12,7 @@ Height-only monitors can show a host as healthy while Spark sync still stalls. T
 | **Funding** | [FCS proposal](https://funding.firo.org/proposals/zz-noimg3-panagot) · [Forum](https://forum.firo.org/t/fcs-proposal-zz-noimg3/4350) |
 | **License** | [MIT](LICENSE) |
 | **Source** | [github.com/firostatus/Firostatus](https://github.com/firostatus/Firostatus/tree/main) (MIT) |
-| **Author** | Pan (`panagot`) |
+| **Author** | Panagot (`panagot`) |
 
 ```bash
 npm start   # optional local always-on · Node.js ≥ 22.5 → http://localhost:3000
