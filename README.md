@@ -11,7 +11,7 @@ Height-only monitors can show a host as healthy while Spark sync still stalls. T
 | **Live (production)** | [firostatus.com](https://firostatus.com/) |
 | **Funding** | [FCS proposal](https://funding.firo.org/proposals/zz-noimg3-panagot) · [Forum](https://forum.firo.org/t/fcs-proposal-zz-noimg3/4350) |
 | **License** | [MIT](LICENSE) |
-| **Source** | [gitlab.com/panagiotispollis/firostatus](https://gitlab.com/panagiotispollis/firostatus) (MIT) |
+| **Source** | [github.com/firostatus/Firostatus](https://github.com/firostatus/Firostatus/tree/main) (MIT) |
 | **Author** | Panagiotis Pollis (`panagot`) |
 
 ```bash
@@ -33,7 +33,7 @@ npm start   # optional local always-on · Node.js ≥ 22.5 → http://localhost:
 7. [Public JSON API](#public-json-api)
 8. [CI and embeds](#ci-and-embeds)
 9. [Curated registry](#curated-registry)
-10. [Production vs limited preview](#production-vs-limited-preview)
+10. [Production](#production)
 11. [Roadmap / FCS](#roadmap--fcs)
 12. [Docs map](#docs-map)
 13. [Privacy](#privacy)
@@ -79,9 +79,11 @@ Open the dashboard tabs:
 | **Overview** | Live fleet strip, **Spark sync answer** (usable / agreement / best reliable / risk), durable Chart.js series (tip lag, fleet mix, anon-set), glance table, SQLite uptime, **fleet scorecard**, **one-click compare**, TLS strip, status timeline, setHash incidents |
 | **Backends** | Full table sorted critical → healthy · **search** · status filter · **wallet `used_by` filter** · **Diagnose** drawer on yellow/red · optional RTT/trend columns |
 | **Spark health** | Anon-set ranking, growth charts, bandwidth compare (same setHash, different MB), setHash divergence windows |
+| **Operators** | Listed host vs fleet (TLS, tip, Spark, fetch) · light live probe · listing via issue / merge request |
+| **Alerts** | On-board event log · Telegram / webhook for the maintainer · `/api/ci` for CI |
 | **Developers** | Routes, field glossary, `spark_ok`-first CI, embed kit, ElectrumX → JSON field map, live `/api/ci` chips |
 | **Roadmap** | FCS milestones + live M1 checklist |
-| **About** | Status model, always-on vs preview, privacy statement |
+| **About** | What this is, status model, privacy, operators & alerts |
 
 **Per-backend detail** (`#/backend/:id`): reliability verdict, fail-reason chips, vs-fleet compare, status ribbon, durable history charts, setHash windows for that host, copy connect / page link / jq curls.
 
@@ -127,10 +129,10 @@ Probe RTT is **secondary** and **single-region** — useful for ops, not a ranki
 Shared probe core: `lib/probe.js`. Shared UI: `public/index.html` + `public/enhance.js`.
 
 ```
-Browser ──► /api/status | /api/history | /api/ci | …
+Browser ──► /api/status | /api/history | /api/ci | /api/check | /api/alerts | …
                  │
             server.js (always-on)
-         light probes + anon sweeps
+         light probes + anon sweeps + alerts
            SQLite /api/history
                  │
             lib/probe.js
@@ -147,10 +149,11 @@ Browser ──► /api/status | /api/history | /api/ci | …
 **Requirements:** Node.js **≥ 22.5** (uses built-in `node:sqlite`). No `npm install` dependencies.
 
 ```bash
-git clone https://gitlab.com/panagiotispollis/firostatus.git
-cd firostatus
+git clone https://github.com/firostatus/Firostatus.git
+cd Firostatus
 npm start
 # → http://localhost:3000
+# optional: copy .env.example to .env for Telegram / webhook alerts
 ```
 
 | Path | Role |
@@ -159,6 +162,8 @@ npm start
 | `lib/probe.js` | Registry + Electrum/Spark probes + snapshot builder |
 | `lib/history.js` | SQLite samples, fleet series, setHash events, uptime |
 | `lib/apiMeta.js` | `/api/docs` glossary, registry, deep links |
+| `lib/alerts.js` | Telegram / webhook alerts + on-host event log |
+| `lib/selfcheck.js` | Operator self-check (private IPs rejected) |
 | `public/index.html` | Dashboard |
 | `public/enhance.js` | Charts, scorecard, compare, diagnose, analytics |
 | `data/history.sqlite` | Created at runtime (**gitignored**) |
@@ -174,7 +179,10 @@ npm start
 | [`GET /api/ci`](https://firostatus.com/api/ci) | Pass/fail JSON — HTTP **200** when `ok`, **503** when not |
 | [`GET /api/docs`](https://firostatus.com/api/docs) | Field glossary, registry, Electrum→field map, deep links |
 | [`GET /api/badge`](https://firostatus.com/api/badge) | SVG fleet health badge |
+| [`GET /api/health`](https://firostatus.com/api/health) | Liveness (uptime, sample_count) |
 | `GET /api/history` | Durable series + uptime + setHash events (**always-on only**) |
+| `GET /api/alerts` | Alert channel booleans + recent deliveries |
+| `POST /api/check` | Operator self-check (light probe, SSRF-safe) |
 
 Machine-readable docs: [/api/docs](https://firostatus.com/api/docs) · human notes: [`docs/API.md`](docs/API.md)
 
@@ -190,10 +198,10 @@ curl -sS https://firostatus.com/api/status \
 
 ```bash
 # Spark path health (tip lag alone should not fail this check)
-curl -sS ORIGIN/api/ci | jq -e '.spark_ok == true'
+curl -sS https://firostatus.com/api/ci | jq -e '.spark_ok == true'
 
 # Strict tip + Spark gate (curl -f fails on HTTP 503)
-curl -sS -f ORIGIN/api/ci | jq '{ok, spark_ok, max_lag, reasons}'
+curl -sS -f https://firostatus.com/api/ci | jq '{ok, spark_ok, max_lag, reasons}'
 ```
 
 | Field | Meaning |
@@ -228,6 +236,8 @@ curl -sS 'https://firostatus.com/api/history?hours=24&limit=200' \
 | `/spark` | Spark health |
 | `/backends` | Backends table |
 | `/developers` | Developers |
+| `/operators` | Operator self-check |
+| `/alerts` | Fleet event log · Telegram / webhook |
 | `/backend/mathnodes` | Per-host detail (registry id) |
 
 Registry ids and deep links also appear under `/api/docs`.
@@ -249,7 +259,7 @@ Default SSL port: **50002**.
 | | |
 |--|--|
 | **Public board** | [firostatus.com](https://firostatus.com/) — always-on Node (`server.js` + `public/`) |
-| **Source (MIT)** | [gitlab.com/panagiotispollis/firostatus](https://gitlab.com/panagiotispollis/firostatus) |
+| **Source (MIT)** | [github.com/firostatus/Firostatus](https://github.com/firostatus/Firostatus/tree/main) |
 | **Anon-set** | Continuous sweeps · `anonset_source: live` (or last-good while refreshing) |
 | **History** | SQLite via `/api/history` |
 | **Verifier curls** | [`docs/VERIFY.md`](docs/VERIFY.md) |
@@ -263,7 +273,7 @@ Funded via the **Firo Crowdfunding System** — about **$2,000** (in FIRO), 50/5
 | Milestone | Focus |
 |-----------|--------|
 | **M1** | Always-on production: domain, MIT source, live dashboard + API + history, forum launch |
-| **M2** | Ops: alerting, operator self-check, upstream contribution, handover |
+| **M2** | Ops: alerting, operator self-check, decision surfaces, handover |
 
 Proposal archive: [`docs/PROPOSAL.md`](docs/PROPOSAL.md) · live checklist: dashboard **Roadmap** tab.
 
@@ -276,6 +286,7 @@ Proposal archive: [`docs/PROPOSAL.md`](docs/PROPOSAL.md) · live checklist: dash
 | [`docs/VERIFY.md`](docs/VERIFY.md) | CFC / community verifier curls |
 | [`docs/API.md`](docs/API.md) | Human API notes |
 | [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) | Probe rules, scoring, uptime definition |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | Runbook, cost, 12-month uptime commitment |
 | [`docs/PROPOSAL.md`](docs/PROPOSAL.md) | Historical FCS proposal text |
 | [`DEPLOY.md`](DEPLOY.md) | Always-on deploy notes |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to propose registry / docs changes |

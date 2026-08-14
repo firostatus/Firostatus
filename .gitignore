@@ -11,6 +11,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+/botdetails.md
 
 # Scratch research probes — not part of the deliverable (root only; keep lib/probe.js)
 /probe.js
@@ -38,6 +39,11 @@ Thumbs.db
 /STATUS.local.md
 /*.pem
 /*.key
+
+# Internal notes — not part of the public tree
+/AGENTS.md
+/docs/STATUS.md
+/assets/
 
 # Perf audit dumps (live API captures — never publish)
 /_perf_audit/

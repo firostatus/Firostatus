@@ -15,14 +15,14 @@ PORT=3000 node server.js
 Or from a clone:
 
 ```bash
-git clone https://gitlab.com/panagiotispollis/firostatus.git
-cd firostatus
+git clone https://github.com/firostatus/Firostatus.git
+cd Firostatus
 npm start
 ```
 
 Point the reverse proxy (or cPanel Node app) at the Node process with HTTPS for **firostatus.com**.
 
-UI routes are path-based (`/overview`, `/backends`, `/spark`, `/developers`, `/roadmap`, `/about`, `/backend/:id`). Ensure the proxy forwards those paths to Node.
+UI routes are path-based (`/overview`, `/backends`, `/spark`, `/developers`, `/operators`, `/alerts`, `/roadmap`, `/about`, `/backend/:id`). Ensure the proxy forwards those paths to Node.
 
 ## Hosting requirements
 

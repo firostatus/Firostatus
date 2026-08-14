@@ -1,10 +1,11 @@
 {
   "name": "firostatus",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "FiroStatus — Spark sync & Electrum fleet health for firostatus.com. Privacy-safe probes only.",
   "scripts": {
     "start": "node server.js",
-    "pack:deploy": "node scripts/pack-deploy.js"
+    "pack:deploy": "node scripts/pack-deploy.js",
+    "check:spark": "node scripts/spark-health-check.js"
   },
   "keywords": [
     "firo",

@@ -7,8 +7,8 @@ Thanks for helping keep Firo’s public Spark Electrum fleet visible.
 Requires **Node.js ≥ 22.5** (uses built-in `node:sqlite`). No `npm install` required at the repo root.
 
 ```bash
-git clone https://gitlab.com/panagiotispollis/firostatus.git
-cd firostatus
+git clone https://github.com/firostatus/Firostatus.git
+cd Firostatus
 npm start   # -> http://localhost:3000
 ```
 
@@ -26,6 +26,8 @@ Good contributions:
 - Docs / methodology clarifications
 - Bugfixes in probes, scoring, API, or UI
 - Tests or scripts that stay privacy-safe
+
+Use the **Operators** tab (`/operators`) or `POST /api/check` to verify a host before opening a registry issue or merge request. Private addresses are rejected; the self-check never downloads the Spark anon set.
 
 Out of scope / will be declined:
 

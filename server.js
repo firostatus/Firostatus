@@ -11,9 +11,13 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const { fork } = require('child_process')
+const { loadEnvFile } = require('./lib/env')
+loadEnvFile()
 const { REGISTRY, probeServer, buildSnapshot } = require('./lib/probe')
 const history = require('./lib/history')
 const { statusMeta, sparkSummary, ciSummary, docsPayload } = require('./lib/apiMeta')
+const alerts = require('./lib/alerts')
+const { selfCheck } = require('./lib/selfcheck')
 
 const PORT = process.env.PORT || 3000
 const POLL_INTERVAL_MS = 45_000 // light health probe cadence
@@ -116,7 +120,7 @@ function refreshHotBuffers() {
       anonset_refreshing: !!snapshot.anonset_refreshing,
       summary: snapshot.summary || null,
       history: { sqlite: histSqliteOk, sample_count: cachedSampleCount },
-      meta: { docs: '/api/docs', ci: '/api/ci', status: '/api/status' },
+      meta: { docs: '/api/docs', ci: '/api/ci', status: '/api/status', alerts: '/api/alerts', check: '/api/check' },
     }),
   )
 }
@@ -291,9 +295,11 @@ function serveHistoryFromCache(query) {
   const limit = Math.min(Math.max(Number(query.limit) || (query.id ? HIST_EP_LIMIT : HIST_FLEET_LIMIT), 100), 20000)
   const id = query.id || null
 
-  // Accept nearby limits so older clients still HIT the slim cache.
-  const fleetLimitOk = !id && hours === HIST_FLEET_HOURS && limit >= 800 && limit <= 3000
-  const epLimitOk = id && hours === HIST_EP_HOURS && limit >= 600 && limit <= 2000
+  // Cache is built at 168h; also accept 24h (VERIFY.md / docs curls) — payload already includes fleet_pct_24h.
+  // Accept common limit aliases (200…3000) so verifier examples HIT instead of returning a warming stub.
+  const hoursOk = hours === HIST_FLEET_HOURS || hours === 24
+  const fleetLimitOk = !id && hoursOk && limit >= 100 && limit <= 3000
+  const epLimitOk = id && hoursOk && limit >= 100 && limit <= 2000
 
   if (id && epLimitOk && histCache.byId[id]) return histCache.byId[id].buf
   if (fleetLimitOk && histCache.fleet) return histCache.fleet.buf
@@ -338,6 +344,7 @@ async function pollAll() {
   // Always skip overlapping light polls if previous still running — Promise handles that.
   const rows = await Promise.all(REGISTRY.map((ep) => probeServer(ep)))
   publishSnapshot(rows)
+  alerts.onSnapshot(snapshot).catch((e) => console.error('[alerts]', e && e.message))
   try {
     const rec = history.recordSnapshot(snapshot)
     if (rec && rec.recorded) {
@@ -351,7 +358,9 @@ async function pollAll() {
   if (!histCache.fleet || Date.now() - (histCache.lastRebuildAt || 0) > HIST_REBUILD_MIN_MS) {
     scheduleHistoryCacheRebuild(8_000)
   }
-  const line = rows.map((r) => `${r.name}:${r.status}${r.lag != null ? `(lag ${r.lag})` : ''}`).join('  ')
+  const line = (snapshot.endpoints || [])
+    .map((r) => `${r.name}:${r.status}${r.lag != null ? `(lag ${r.lag})` : ''}`)
+    .join('  ')
   console.log(`[poll ${snapshot.checked_at}] ref=${snapshot.reference} spark=${snapshot.spark_consensus}  ${line}`)
 }
 
@@ -442,6 +451,70 @@ function badgeSvg(label, message, color) {
 </svg>`
 }
 
+function sendJson(res, code, obj) {
+  const buf = Buffer.from(JSON.stringify(obj))
+  res.writeHead(code, {
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'cache-control': 'no-cache',
+    'content-length': buf.length,
+  })
+  res.end(buf)
+}
+
+function readJsonBody(req, limit = 4096) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let n = 0
+    req.on('data', (c) => {
+      n += c.length
+      if (n > limit) {
+        req.destroy()
+        const e = new Error('payload too large')
+        e.status = 413
+        reject(e)
+        return
+      }
+      chunks.push(c)
+    })
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8').trim()
+        resolve(raw ? JSON.parse(raw) : {})
+      } catch {
+        const e = new Error('invalid json')
+        e.status = 400
+        reject(e)
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function clientIp(req) {
+  const remote = (req.socket && req.socket.remoteAddress) || 'unknown'
+  if (process.env.FIRO_TRUST_PROXY === '1') {
+    const xf = String(req.headers['x-forwarded-for'] || '')
+      .split(',')[0]
+      .trim()
+    if (xf) return xf
+  }
+  return remote
+}
+
+function isLoopbackIp(ip) {
+  const s = String(ip || '')
+  return s === '127.0.0.1' || s === '::1' || s === ':ffff:127.0.0.1' || s.endsWith('127.0.0.1')
+}
+
+function alertTokenOk(req, body) {
+  if (isLoopbackIp(clientIp(req))) return true
+  const expected = process.env.ALERT_TOKEN || ''
+  if (!expected || expected.length < 8) return false
+  const got = String((req.headers['x-alert-token'] || (body && body.token) || '')).trim()
+  return got.length > 0 && got === expected
+}
+
 function sendJsonBuf(res, buf, extraHeaders) {
   const headers = Object.assign(
     {
@@ -458,6 +531,48 @@ function sendJsonBuf(res, buf, extraHeaders) {
 
 const server = http.createServer((req, res) => {
   const url = req.url || '/'
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-headers': 'content-type, x-alert-token',
+      'access-control-max-age': '600',
+    })
+    res.end()
+    return
+  }
+  if (url.startsWith('/api/alerts/test') && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => {
+        if (!alertTokenOk(req, body)) {
+          sendJson(res, 403, { ok: false, error: 'alert test requires loopback or X-Alert-Token' })
+          return
+        }
+        return alerts.sendTest(body && body.note).then((out) => sendJson(res, out.ok ? 200 : 400, out))
+      })
+      .catch((e) => sendJson(res, e.status || 400, { ok: false, error: e.message || 'bad request' }))
+    return
+  }
+  if (url.startsWith('/api/alerts')) {
+    sendJson(res, 200, alerts.statusPayload())
+    return
+  }
+  if (url.startsWith('/api/check') && req.method === 'POST') {
+    readJsonBody(req)
+      .then((body) => selfCheck(body, clientIp(req), snapshot))
+      .then((out) => sendJson(res, 200, out))
+      .catch((e) => sendJson(res, e.status || 400, { ok: false, error: e.message || 'check failed' }))
+    return
+  }
+  if (url.startsWith('/api/check')) {
+    sendJson(res, 200, {
+      method: 'POST',
+      body: { host: 'electrumx.example.com', port: 50002 },
+      privacy: 'Light probe only. Private addresses rejected. No anon-set fetch.',
+      rate_limit: '1 per 12s per client, 20/hour',
+    })
+    return
+  }
   if (url.startsWith('/api/status')) {
     if (!hot.status) refreshHotBuffers()
     // Refresh uptime-sensitive health separately; status snapshot is stable between polls.
@@ -523,7 +638,7 @@ const server = http.createServer((req, res) => {
         anonset_refreshing: !!snapshot.anonset_refreshing,
         summary: snapshot.summary || null,
         history: { sqlite: histSqliteOk, sample_count: cachedSampleCount },
-        meta: { docs: '/api/docs', ci: '/api/ci', status: '/api/status' },
+        meta: { docs: '/api/docs', ci: '/api/ci', status: '/api/status', alerts: '/api/alerts', check: '/api/check' },
       }),
     )
     sendJsonBuf(res, buf)
@@ -585,6 +700,11 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith('/docs/') && pathname.endsWith('.md')) {
     const base = path.join(__dirname, 'docs')
     const safe = path.normalize(pathname.replace(/^\/docs\//, '')).replace(/^(\.\.(\/|\\|$))+/, '')
+    if (safe.toLowerCase() === 'status.md') {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('not found')
+      return
+    }
     const file = path.join(base, safe)
     if (file.startsWith(base) && fs.existsSync(file) && fs.statSync(file).isFile()) {
       res.writeHead(200, {
@@ -638,6 +758,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`FiroStatus -> http://localhost:${PORT}`)
+  const ch = alerts.channels()
+  console.log(`[alerts] telegram=${ch.telegram} webhook=${ch.webhook}`)
   try {
     cachedSampleCount = history.sampleCount()
     histSqliteOk = true

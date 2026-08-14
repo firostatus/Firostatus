@@ -80,3 +80,12 @@ Session charts in the browser are separate (localStorage) and are labeled as ses
 | `notes` | Informational when `ok` but some hosts are ops-yellow |
 
 HTTP **200** when `ok`, else **503**. Mild lag alone can yield `spark_ok: true` with `ok: false`. Badge text prefers **spark ok** over green-count.
+
+## Operator self-check
+
+`POST /api/check` runs the **light** probe only (version, headers, Spark coin id). It does not download the anonymity set. Private / loopback / metadata targets are rejected. Listing a host on the public board still requires a PR to `REGISTRY` in `lib/probe.js`.
+
+## Alerting
+
+The always-on process records fleet events (red host, Spark/`setHash` divergence, lag spike, TLS expiry) and can POST to Telegram or a generic webhook. Channels are env-only (see `.env.example`). `GET /api/alerts` never returns secrets.
+

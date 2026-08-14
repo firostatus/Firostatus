@@ -1,10 +1,10 @@
-# Firo Spark Sync Monitor · JSON API
+# Firo Spark Sync Monitor — JSON API
 
 For Firo developers, wallet teams, Electrum operators, and tooling authors.
 
 **Production:** [https://firostatus.com](https://firostatus.com/)  
 Human guide: [Developers](https://firostatus.com/developers)  
-Machine reference: [`/api/docs`](https://firostatus.com/api/docs) · verifier: [`/docs/VERIFY.md`](https://firostatus.com/docs/VERIFY.md)
+Machine reference: [`/api/docs`](https://firostatus.com/api/docs) — verifier: [`/docs/VERIFY.md`](https://firostatus.com/docs/VERIFY.md)
 
 ## Routes
 
@@ -17,18 +17,21 @@ Machine reference: [`/api/docs`](https://firostatus.com/api/docs) · verifier: [`
 | `GET /api/badge` | SVG badge (prefers spark ok) |
 | `GET /api/history` | Durable SQLite time series + 24h/7d uptime % |
 | `GET /api/health` | Liveness (process uptime, sample_count; no filesystem paths) |
+| `GET /api/alerts` | Telegram / webhook status + recent fleet events (no secrets) |
+| `POST /api/alerts/test` | Send a test ping (loopback, or `X-Alert-Token`) |
+| `POST /api/check` | Operator self-check: light probe of `{host,port}` (SSRF-safe, rate-limited) |
 
 ## How this relates to Electrumx / wallet SDKs
 
 Wallet Electrum clients (and TypeScript / mobile SDKs) talk to **one host** and do real Spark sync for the user.
 
-This API watches the **curated public fleet** and publishes tip freshness, Spark coin group agreement, `setHash` consistency, and full anon-set fetch cost (ms / MB / coins) ? so teams need not each re-download tens of MB just to compare backends.
+This API watches the **curated public fleet** and publishes tip freshness, Spark coin group agreement, `setHash` consistency, and full anon-set fetch cost (ms / MB / coins) so teams need not each re-download tens of MB just to compare backends.
 
 **Complement, not a replacement.** See `meta.complements` and `meta.not_for` on `/api/status` and `/api/docs`.
 
 ### Not for
 
-- In-wallet ?pick a server? UI
+- In-wallet —pick a server— UI
 - Replacing a wallet Electrum / Spark SDK
 - Ranking hosts by user-device RTT (probe RTT is from this monitor only)
 - Authoritative chain state (full nodes remain authoritative)
@@ -57,7 +60,7 @@ Available on production ([firostatus.com](https://firostatus.com/)) and any alwa
 | `id` | all | Filter `points` to one registry id |
 | `limit` | `3000` | Max points returned |
 
-Uptime is **strict green %**: share of stored samples with `status=green` over 24h and 7d (fleet + per endpoint). Yellow/red count as down ? not a wallet SLA. Prefer `/api/ci` `spark_ok` for Spark health.
+Uptime is **strict green %**: share of stored samples with `status=green` over 24h and 7d (fleet + per endpoint). Yellow/red count as down — not a wallet SLA. Prefer `/api/ci` `spark_ok` for Spark health.
 
 ```bash
 curl -sS https://firostatus.com/api/history \
@@ -122,6 +125,21 @@ curl -sS https://firostatus.com/api/status \
 
 ```markdown
 [![Firo Spark fleet](https://firostatus.com/api/badge)](https://firostatus.com/)
+```
+
+### Operator self-check
+
+```bash
+curl -sS -X POST https://firostatus.com/api/check \
+  -H 'content-type: application/json' \
+  -d '{"host":"electrumx.firo.org","port":50002}' \
+  | jq '{ok,height,spark_latest_coin_id,vs_fleet,notes}'
+```
+
+### Alert channel status
+
+```bash
+curl -sS https://firostatus.com/api/alerts | jq '{configured,any,recent}'
 ```
 
 ## Privacy

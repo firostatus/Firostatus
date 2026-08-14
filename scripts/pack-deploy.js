@@ -24,6 +24,7 @@ const include = [
   'README.md',
   'DEPLOY.md',
   'CONTRIBUTING.md',
+  '.env.example',
   'lib',
   'public',
   'docs',
