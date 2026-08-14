@@ -40,13 +40,4 @@ Thumbs.db
 /*.pem
 /*.key
 
-# Internal notes — not part of the public tree
-/AGENTS.md
-/docs/STATUS.md
-/assets/
 
-# Perf audit dumps (live API captures — never publish)
-/_perf_audit/
-
-# Internal agent prompts — never publish
-/docs/PERF_FIX_PROMPT.md
