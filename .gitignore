@@ -35,14 +35,5 @@ Thumbs.db
 *.sqlite
 *.sqlite-*
 
-# Private working notes (keep local only)
-/STATUS.local.md
-/*.pem
-/*.key
-
-# Internal notes — not part of the public tree
-/AGENTS.md
-/docs/STATUS.md
-/assets/
 
 
