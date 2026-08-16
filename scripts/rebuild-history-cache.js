@@ -5,10 +5,9 @@ const path = require('path')
 const { REGISTRY } = require('../lib/probe')
 const history = require('../lib/history')
 
-const HIST_FLEET_HOURS = 168
-const HIST_FLEET_LIMIT = 900
-const HIST_EP_HOURS = 168
-const HIST_EP_LIMIT = 800
+const WINDOWS = [24, 168, 720]
+const FLEET_LIMIT = { 24: 2500, 168: 1200, 720: 1200 }
+const EP_LIMIT = { 24: 2500, 168: 800, 720: 800 }
 const OUT_DIR = path.join(__dirname, '..', 'data', 'history-cache')
 
 function writeEntry(name, body) {
@@ -37,22 +36,25 @@ function main() {
   const t0 = Date.now()
   history.open()
   let total = 0
-  for (const ep of REGISTRY) {
-    const body = history.historyPayload({
-      hours: HIST_EP_HOURS,
-      limit: HIST_EP_LIMIT,
-      id: ep.id,
-      skipEvents: true,
+  let files = 0
+  for (const hours of WINDOWS) {
+    for (const ep of REGISTRY) {
+      const body = history.historyPayload({
+        hours,
+        limit: EP_LIMIT[hours],
+        id: ep.id,
+      })
+      total += writeEntry('ep-' + ep.id + '-' + hours, body)
+      files++
+    }
+    const fleet = history.historyPayload({
+      hours,
+      limit: FLEET_LIMIT[hours],
     })
-    total += writeEntry('ep-' + ep.id, body)
+    total += writeEntry('fleet-' + hours, fleet)
+    files++
   }
-  const fleet = history.historyPayload({
-    hours: HIST_FLEET_HOURS,
-    limit: HIST_FLEET_LIMIT,
-    skipEvents: true,
-  })
-  total += writeEntry('fleet', fleet)
-  console.log(`[history-cache-worker] wrote fleet+${REGISTRY.length} endpoints (${total}B) in ${Date.now() - t0}ms`)
+  console.log(`[history-cache-worker] wrote ${files} files (${total}B) in ${Date.now() - t0}ms`)
 }
 
 main()

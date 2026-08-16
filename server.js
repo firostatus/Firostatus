@@ -172,15 +172,14 @@ function loadAnonsetFromDisk() {
 // Pre-warmed /api/history responses — rebuild after each poll so visitors never
 // wait on a cold SQLite+setHash scan. Requests get cache immediately; UI can
 // show "refreshing…" until the next rebuild lands.
-const HIST_FLEET_HOURS = 168
-const HIST_FLEET_LIMIT = 900 // slim chart payload (~UI downsamples further)
-const HIST_EP_HOURS = 168
-const HIST_EP_LIMIT = 800
+const HIST_WINDOWS = [24, 168, 720]
+const HIST_FLEET_LIMIT = { 24: 2500, 168: 1200, 720: 1200 }
+const HIST_EP_LIMIT = { 24: 2500, 168: 800, 720: 800 }
 const HIST_CACHE_DIR = path.join(__dirname, 'data', 'history-cache')
 const HIST_REBUILD_MIN_MS = 3 * 60_000
 const histCache = {
-  fleet: null, // { buf, built_at }
-  byId: Object.create(null),
+  fleet: Object.create(null), // hours -> { buf, built_at }
+  byId: Object.create(null), // id -> { hours -> { buf, built_at } }
   building: false,
   child: null,
   timer: null,
@@ -188,33 +187,40 @@ const histCache = {
   lastRebuildAt: 0,
 }
 
+function histHasFleetCache() {
+  return HIST_WINDOWS.some((h) => histCache.fleet[h])
+}
+
 function loadHistoryCacheFromDisk() {
   try {
     if (!fs.existsSync(HIST_CACHE_DIR)) return 0
     let n = 0
-    const fleetPath = path.join(HIST_CACHE_DIR, 'fleet.json')
-    const fleetMeta = path.join(HIST_CACHE_DIR, 'fleet.meta.json')
-    if (fs.existsSync(fleetPath)) {
-      const buf = fs.readFileSync(fleetPath)
-      let built_at = Date.now()
-      try {
-        if (fs.existsSync(fleetMeta)) built_at = JSON.parse(fs.readFileSync(fleetMeta, 'utf8')).built_at || built_at
-      } catch {}
-      histCache.fleet = { buf, built_at }
-      histCache.lastRebuildAt = built_at
-      n++
-    }
-    for (const ep of REGISTRY) {
-      const p = path.join(HIST_CACHE_DIR, 'ep-' + ep.id + '.json')
-      const m = path.join(HIST_CACHE_DIR, 'ep-' + ep.id + '.meta.json')
-      if (!fs.existsSync(p)) continue
-      const buf = fs.readFileSync(p)
-      let built_at = Date.now()
-      try {
-        if (fs.existsSync(m)) built_at = JSON.parse(fs.readFileSync(m, 'utf8')).built_at || built_at
-      } catch {}
-      histCache.byId[ep.id] = { buf, built_at }
-      n++
+    for (const hours of HIST_WINDOWS) {
+      const fleetPath = path.join(HIST_CACHE_DIR, 'fleet-' + hours + '.json')
+      const fleetMeta = path.join(HIST_CACHE_DIR, 'fleet-' + hours + '.meta.json')
+      if (fs.existsSync(fleetPath)) {
+        const buf = fs.readFileSync(fleetPath)
+        let built_at = Date.now()
+        try {
+          if (fs.existsSync(fleetMeta)) built_at = JSON.parse(fs.readFileSync(fleetMeta, 'utf8')).built_at || built_at
+        } catch {}
+        histCache.fleet[hours] = { buf, built_at }
+        histCache.lastRebuildAt = built_at
+        n++
+      }
+      for (const ep of REGISTRY) {
+        const p = path.join(HIST_CACHE_DIR, 'ep-' + ep.id + '-' + hours + '.json')
+        const m = path.join(HIST_CACHE_DIR, 'ep-' + ep.id + '-' + hours + '.meta.json')
+        if (!fs.existsSync(p)) continue
+        const buf = fs.readFileSync(p)
+        let built_at = Date.now()
+        try {
+          if (fs.existsSync(m)) built_at = JSON.parse(fs.readFileSync(m, 'utf8')).built_at || built_at
+        } catch {}
+        if (!histCache.byId[ep.id]) histCache.byId[ep.id] = Object.create(null)
+        histCache.byId[ep.id][hours] = { buf, built_at }
+        n++
+      }
     }
     if (n) console.log(`[history-cache] loaded ${n} files from disk (instant HIT after restart)`)
     return n
@@ -247,11 +253,12 @@ function onHistoryCacheBuilt(code) {
 
 function rebuildHistoryCache() {
   if (histCache.building || histCache.child) return
-  if (anonsetSweeping) {
+  // Cold start after deploy: build cache even while the anon-set sweep runs.
+  if (anonsetSweeping && histHasFleetCache()) {
     scheduleHistoryCacheRebuild(30_000)
     return
   }
-  if (histCache.lastRebuildAt && Date.now() - histCache.lastRebuildAt < HIST_REBUILD_MIN_MS && histCache.fleet) {
+  if (histCache.lastRebuildAt && Date.now() - histCache.lastRebuildAt < HIST_REBUILD_MIN_MS && histHasFleetCache()) {
     return
   }
   histCache.building = true
@@ -260,7 +267,16 @@ function rebuildHistoryCache() {
   try {
     const child = fork(worker, [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] })
     histCache.child = child
+    const killTimer = setTimeout(() => {
+      if (histCache.child === child) {
+        console.error('[history-cache] worker timeout — killing hung rebuild')
+        try {
+          child.kill()
+        } catch {}
+      }
+    }, 90_000)
     child.on('error', (err) => {
+      clearTimeout(killTimer)
       console.error('[history-cache] fork error — falling back to spawn sync in idle slot', err && err.message)
       histCache.child = null
       try {
@@ -270,7 +286,10 @@ function rebuildHistoryCache() {
         onHistoryCacheBuilt(1)
       }
     })
-    child.on('exit', (code) => onHistoryCacheBuilt(code))
+    child.on('exit', (code) => {
+      clearTimeout(killTimer)
+      onHistoryCacheBuilt(code)
+    })
   } catch (err) {
     console.error('[history-cache] fork threw — execFileSync fallback', err && err.message)
     try {
@@ -290,20 +309,53 @@ function scheduleHistoryCacheRebuild(delayMs) {
   }, delayMs == null ? 400 : delayMs)
 }
 
-function serveHistoryFromCache(query) {
-  const hours = Math.min(Math.max(Number(query.hours) || HIST_FLEET_HOURS, 1), 720)
-  const limit = Math.min(Math.max(Number(query.limit) || (query.id ? HIST_EP_LIMIT : HIST_FLEET_LIMIT), 100), 20000)
-  const id = query.id || null
-
-  // Cache is built at 168h; also accept 24h (VERIFY.md / docs curls) — payload already includes fleet_pct_24h.
-  // Accept common limit aliases (200…3000) so verifier examples HIT instead of returning a warming stub.
-  const hoursOk = hours === HIST_FLEET_HOURS || hours === 24
-  const fleetLimitOk = !id && hoursOk && limit >= 100 && limit <= 3000
-  const epLimitOk = id && hoursOk && limit >= 100 && limit <= 2000
-
-  if (id && epLimitOk && histCache.byId[id]) return histCache.byId[id].buf
-  if (fleetLimitOk && histCache.fleet) return histCache.fleet.buf
+function requestedHistoryWindow(query) {
+  if (query.hours == null || query.hours === '') return 168
+  const n = Number(query.hours)
+  if (n === 24 || n === 168 || n === 720) return n
   return null
+}
+
+function serveHistoryFromCache(query) {
+  const hours = requestedHistoryWindow(query)
+  if (hours == null) return null
+  const id = query.id || null
+  const defaultLimit = id ? HIST_EP_LIMIT[hours] : HIST_FLEET_LIMIT[hours]
+  const limit = Math.min(Math.max(Number(query.limit) || defaultLimit, 100), 20000)
+  // Accept common limit aliases so verifier curls HIT the matching window cache.
+  if (id) {
+    if (limit < 100 || limit > 3000) return null
+    const slot = histCache.byId[id] && histCache.byId[id][hours]
+    return slot ? slot.buf : null
+  }
+  if (limit < 100 || limit > 4000) return null
+  return histCache.fleet[hours] ? histCache.fleet[hours].buf : null
+}
+
+/** First-paint after deploy: read SQLite now so charts are not an empty warming stub. */
+function liveHistoryBuf(query) {
+  const hours = requestedHistoryWindow(query) || 168
+  const id = query.id || null
+  const defaultLimit = id ? HIST_EP_LIMIT[hours] : HIST_FLEET_LIMIT[hours]
+  const limit = Math.min(Math.max(Number(query.limit) || defaultLimit, 100), 20000)
+  const body = history.historyPayload({ hours, id, limit })
+  const built_at = Date.now()
+  body.cache = {
+    hit: false,
+    built_at: new Date(built_at).toISOString(),
+    age_s: 0,
+    refreshing: !!(histCache.building || histCache.child),
+    note: 'Live SQLite read while the full history cache warms.',
+    mode: id ? 'endpoint' : 'fleet',
+  }
+  const buf = Buffer.from(JSON.stringify(body))
+  if (id) {
+    if (!histCache.byId[id]) histCache.byId[id] = Object.create(null)
+    if (!histCache.byId[id][hours]) histCache.byId[id][hours] = { buf, built_at }
+  } else if (!histCache.fleet[hours]) {
+    histCache.fleet[hours] = { buf, built_at }
+  }
+  return buf
 }
 
 try {
@@ -665,8 +717,24 @@ const server = http.createServer((req, res) => {
         res.end(cachedBuf)
         return
       }
-      // Never run sync SQLite historyPayload on the request path.
-      if (!histCache.fleet) scheduleHistoryCacheRebuild(500)
+      if (!histHasFleetCache()) scheduleHistoryCacheRebuild(500)
+      let liveBuf = null
+      try {
+        liveBuf = liveHistoryBuf(q)
+      } catch (err) {
+        console.error('[history] live fallback failed', err && err.message)
+      }
+      if (liveBuf) {
+        res.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'access-control-allow-origin': '*',
+          'cache-control': 'no-cache',
+          'x-firo-history-cache': 'LIVE',
+          'content-length': liveBuf.length,
+        })
+        res.end(liveBuf)
+        return
+      }
       const stub = Buffer.from(
         JSON.stringify({
           cache: {
@@ -767,8 +835,8 @@ server.listen(PORT, () => {
     histSqliteOk = false
   }
   refreshHotBuffers()
-  if (!histCache.fleet) scheduleHistoryCacheRebuild(5_000)
-  else scheduleHistoryCacheRebuild(120_000)
+  if (!histHasFleetCache()) scheduleHistoryCacheRebuild(5_000)
+  else scheduleHistoryCacheRebuild(8_000)
   pollAll().catch((e) => console.error('poll error', e))
   setInterval(() => pollAll().catch((e) => console.error('poll error', e)), POLL_INTERVAL_MS)
   // Delay first heavy sweep so light status is warm first.

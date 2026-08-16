@@ -40,4 +40,9 @@ Thumbs.db
 /*.pem
 /*.key
 
+# Internal notes — not part of the public tree
+/AGENTS.md
+/docs/STATUS.md
+/assets/
+
 

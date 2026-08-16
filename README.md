@@ -114,7 +114,7 @@ No addresses, keys, transactions, or wallet traffic are sent or stored.
 
 | Status | Meaning |
 |--------|---------|
-| **green** | Reachable, ≤2 blocks behind, Spark id + setHash match, probe RTT &lt;3s from this monitor, TLS ≥14 days |
+| **green** | Reachable, ≤2 blocks behind, Spark id + setHash match, probe RTT not a fleet outlier (`max(5s, 2.5× median)`), TLS ≥14 days |
 | **yellow** | Lagging, slow RTT, missing Spark id, Spark / setHash mismatch, TLS &lt;14 days, or slow/failed anon-set vs fleet band |
 | **red** | Unreachable, &gt;100 blocks behind, or TLS expired |
 
@@ -176,7 +176,7 @@ npm start
 |-------|---------|
 | [`GET /api/status`](https://firostatus.com/api/status) | Full fleet snapshot (+ `meta`, `used_by`, anonset, TLS) |
 | [`GET /api/spark`](https://firostatus.com/api/spark) | Compact Spark consensus |
-| [`GET /api/ci`](https://firostatus.com/api/ci) | Pass/fail JSON — HTTP **200** when `ok`, **503** when not |
+| [`GET /api/ci`](https://firostatus.com/api/ci) | Pass/fail JSON — HTTP **200** after warmup (even if `ok` is false); **503** only while warming |
 | [`GET /api/docs`](https://firostatus.com/api/docs) | Field glossary, registry, Electrum→field map, deep links |
 | [`GET /api/badge`](https://firostatus.com/api/badge) | SVG fleet health badge |
 | [`GET /api/health`](https://firostatus.com/api/health) | Liveness (uptime, sample_count) |
@@ -200,8 +200,8 @@ curl -sS https://firostatus.com/api/status \
 # Spark path health (tip lag alone should not fail this check)
 curl -sS https://firostatus.com/api/ci | jq -e '.spark_ok == true'
 
-# Strict tip + Spark gate (curl -f fails on HTTP 503)
-curl -sS -f https://firostatus.com/api/ci | jq '{ok, spark_ok, max_lag, reasons}'
+# Strict tip + Spark gate — check JSON fields (HTTP is 200 after warmup even when ok=false)
+curl -sS https://firostatus.com/api/ci | jq '{ok, spark_ok, max_lag, reasons}'
 ```
 
 | Field | Meaning |

@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-<script src="/enhance.js?v=20260814" defer></script>
+<script src="/enhance.js?v=20260816c" defer></script>
 <style>
   :root{
     --bg:#12100e; --panel:#1c1916; --panel2:#171411; --border:#2e2924;
@@ -200,6 +200,9 @@
   .tbtn:hover{border-color:rgba(240,163,90,.45);color:var(--ember2)}
   .tbtn.pri{border-color:rgba(94,184,176,.45);background:rgba(94,184,176,.1);color:var(--cyan)}
   .tbtn:disabled{opacity:.45;cursor:not-allowed}
+  .range-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .range-btns .tbtn[aria-pressed="true"]{border-color:rgba(94,184,176,.55);background:rgba(94,184,176,.12);color:var(--cyan)}
+  .hist-coverage{margin:8px 0 0;font-size:12px;color:var(--muted)}
   .opform{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:12px}
   .opform label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
   .opform input,.opform select{background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:13px;padding:9px 11px;min-width:220px}
@@ -557,6 +560,12 @@
           <span class="h">from /api/history</span>
         </div>
         <div class="pbody">
+          <div class="range-btns" data-hist-range role="group" aria-label="History window">
+            <button type="button" class="tbtn" data-hours="24">24h</button>
+            <button type="button" class="tbtn" data-hours="168" aria-pressed="true">7d</button>
+            <button type="button" class="tbtn" data-hours="720">30d</button>
+          </div>
+          <p class="hist-coverage" data-hist-coverage></p>
           <div class="preview-empty">History unavailable — retrying. Session charts at the bottom of Overview still update in-browser.</div>
           <div id="ov-hist-load" class="loadwrap" role="status" aria-live="polite" style="padding:10px 4px 14px"><span class="spin"></span><span>Loading durable charts — cached history first, then freshest samples…</span></div>
           <div class="chart-grid">
@@ -801,6 +810,12 @@
           <span class="h chart-slow-hint" data-anon-slow-hint>seconds · dashed = fleet slow band</span>
         </div>
         <div class="pbody">
+          <div class="range-btns" data-hist-range role="group" aria-label="History window">
+            <button type="button" class="tbtn" data-hours="24">24h</button>
+            <button type="button" class="tbtn" data-hours="168" aria-pressed="true">7d</button>
+            <button type="button" class="tbtn" data-hours="720">30d</button>
+          </div>
+          <p class="hist-coverage" data-hist-coverage></p>
           <div class="preview-empty">Time-series history unavailable — retrying. Ranking cards below still use the latest snapshot.</div>
           <div class="chart-box"><canvas id="chart-anonset"></canvas></div>
         </div>
@@ -995,7 +1010,7 @@
         <div class="epgrid">
           <div class="epcard"><a class="eppath" href="/api/status" target="_blank" rel="noopener">GET /api/status</a><div class="epdesc">Full fleet snapshot: lag, Spark consistency, anon set health, <code>status_reasons</code>, summary, and a <code>meta</code> block.</div></div>
           <div class="epcard"><a class="eppath" href="/api/spark" target="_blank" rel="noopener">GET /api/spark</a><div class="epdesc">Compact Spark consensus for docs and light polling. Includes inconsistent endpoint ids without ranking hosts.</div></div>
-          <div class="epcard"><a class="eppath" href="/api/ci" target="_blank" rel="noopener">GET /api/ci</a><div class="epdesc">Pass/fail JSON. HTTP 200 when <code>ok</code> (Spark healthy <b>and</b> tip lag ≤2). Prefer <code>spark_ok</code> for Spark-only gates. When <code>ok</code>, <code>notes</code> may explain ops-yellow hosts.</div></div>
+          <div class="epcard"><a class="eppath" href="/api/ci" target="_blank" rel="noopener">GET /api/ci</a><div class="epdesc">Pass/fail JSON. HTTP <b>200</b> once a snapshot exists (even if <code>ok</code> is false). HTTP <b>503</b> only while warming. Prefer <code>spark_ok</code> in the JSON body — do not rely on <code>curl -f</code>.</div></div>
           <div class="epcard"><a class="eppath" href="/api/docs" target="_blank" rel="noopener">GET /api/docs</a><div class="epdesc">Machine readable field glossary, probe list, deep links, and example uses.</div></div>
           <div class="epcard"><a class="eppath" href="/api/badge" target="_blank" rel="noopener">GET /api/badge</a><div class="epdesc">SVG badge for READMEs. Prefers <b>spark ok</b> over green-count (yellow ops hosts do not imply Spark failure).</div></div>
           <div class="epcard"><a class="eppath" href="/api/history" target="_blank" rel="noopener">GET /api/history</a><div class="epdesc">Durable history: points, <code>fleet</code> series, <code>events.sethash</code>, 24h/7d uptime % (strict green; not a wallet SLA). Query <code>?hours=&amp;id=&amp;limit=</code>.</div></div>
@@ -1066,9 +1081,9 @@
         <h3>Example: spark_ok-first CI (recommended for Spark sync)</h3>
         <pre id="ex-ci-spark"># Prefer spark_ok for Spark path health (tip lag / ops-yellow alone should not fail Spark CI)
 curl -sS ORIGIN/api/ci | jq -e '.spark_ok == true'
-# Strict tip+Spark gate (HTTP 503 when ok=false); notes explain yellow when ok=true:
-curl -sS -f ORIGIN/api/ci | jq '{ok, spark_ok, max_lag, yellow, notes, reasons}'</pre>
-        <p><code>ok</code> requires <code>spark_ok</code> and <code>max_lag ≤ 2</code>. Mild lag alone can yield <code>spark_ok: true</code> with <code>ok: false</code>. Ops-yellow (RTT outlier, TLS &lt;14d) can leave <code>ok: true</code> with non-empty <code>notes</code>. Use <code>spark_ok</code> for Spark-only gates; use <code>-f</code> + <code>ok</code> when tip freshness is also required.</p>
+# Strict tip+Spark gate — check JSON, not HTTP status (200 even when ok=false; 503 only while warming):
+curl -sS ORIGIN/api/ci | jq '{ok, spark_ok, max_lag, yellow, notes, reasons}'</pre>
+        <p><code>ok</code> requires <code>spark_ok</code> and <code>max_lag ≤ 2</code>. Mild lag alone can yield <code>spark_ok: true</code> with <code>ok: false</code>. Ops-yellow (RTT outlier, TLS &lt;14d) can leave <code>ok: true</code> with non-empty <code>notes</code>. Use <code>spark_ok</code> for Spark-only gates. HTTP is <b>200</b> after warmup even when the fleet is failing — gate on the JSON fields.</p>
 
         <h3>Example: compact consensus poll</h3>
         <pre id="ex-spark">curl -sS ORIGIN/api/spark \
@@ -1443,10 +1458,50 @@ function renderUptime(){
 }
 function historyFreshNote(h){
   if(!h||!h.cache) return ''
-  if(h.cache.refreshing) return 'Showing cached history · loading freshest samples…'
+  var hasPts=!!(h.points&&h.points.length)
+  if(h.cache.refreshing&&!hasPts) return 'Building charts from SQLite…'
+  if(h.cache.refreshing) return 'Charts ready · refreshing cache in the background…'
   if(h.cache.age_s!=null&&h.cache.age_s>60) return 'Showing cached history · last rebuild '+h.cache.age_s+'s ago · refreshing…'
   if(h.cache.hit) return 'Pre-cached history · ready'
   return h.cache.note||''
+}
+var histHours=168
+function histLimitFor(hours){
+  return hours<=24?2500:hours>=720?1200:900
+}
+function histWindowLabel(hours){
+  return hours>=720?'30d':hours>=168?'7d':'24h'
+}
+function paintHistCoverage(h){
+  var text=(h&&h.coverage)||''
+  document.querySelectorAll('[data-hist-coverage]').forEach(function(el){ el.textContent=text })
+}
+function syncHistRangeButtons(){
+  document.querySelectorAll('[data-hist-range] .tbtn').forEach(function(btn){
+    var on=Number(btn.getAttribute('data-hours'))===histHours
+    btn.setAttribute('aria-pressed', on?'true':'false')
+    btn.classList.toggle('pri', on)
+  })
+}
+function setHistHours(hours){
+  hours=Number(hours)
+  if(hours!==24&&hours!==168&&hours!==720) return
+  if(hours===histHours&&HistAPI&&HistAPI.query&&Number(HistAPI.query.hours)===hours) return
+  histHours=hours
+  syncHistRangeButtons()
+  fetchHistory()
+  if(typeof curDetail==='string'&&curDetail) fetchDetailHistory(curDetail)
+}
+function bindHistRanges(){
+  document.querySelectorAll('[data-hist-range]').forEach(function(group){
+    if(group.dataset.bound) return
+    group.dataset.bound='1'
+    group.addEventListener('click', function(ev){
+      var btn=ev.target.closest('[data-hours]')
+      if(!btn||!group.contains(btn)) return
+      setHistHours(btn.getAttribute('data-hours'))
+    })
+  })
 }
 var histSoftRetryTimer=null
 function setOverviewHistLoad(msg, spinning){
@@ -1459,20 +1514,24 @@ function setOverviewHistLoad(msg, spinning){
 function fetchHistory(){
   var load=document.getElementById('ov-hist-load')
   if(load&&!HistAPI) setOverviewHistLoad('Loading durable charts — please wait…', true)
-  fetch('/api/history?hours=168&limit=900').then(function(r){
+  fetch('/api/history?hours='+histHours+'&limit='+histLimitFor(histHours)).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status)
     return r.json()
   }).then(function(h){
     HistAPI=h
     window.HistAPI=h
+    paintHistCoverage(h)
+    syncHistRangeButtons()
     setPreviewMode(isPreviewMode(S,HistAPI))
     renderUptime()
-    // Skip chart paint on preview stub — empty canvases look broken.
-    if(window.FiroEnhance && !isHistoryPreview(h) && h.sample_count>0) window.FiroEnhance.onHistory(h)
+    // Skip chart paint on an empty warming stub — that looks like "no history".
+    if(window.FiroEnhance && !isHistoryPreview(h) && h.points&&h.points.length) window.FiroEnhance.onHistory(h)
     if(S){ renderM1Checklist(S); render(S) }
     var note=historyFreshNote(h)
-    if(h&&h.cache&&(h.cache.refreshing||(h.cache.age_s!=null&&h.cache.age_s>60))){
-      setOverviewHistLoad(note||'Showing cached history · loading freshest samples…', true)
+    if(h&&h.cache&&h.cache.refreshing&&!(h.points&&h.points.length)){
+      setOverviewHistLoad(note||'Building charts from SQLite…', true)
+    } else if(h&&h.cache&&(h.cache.refreshing||(h.cache.age_s!=null&&h.cache.age_s>60))){
+      setOverviewHistLoad(note||'Charts ready · refreshing cache in the background…', true)
     } else if(h&&h.cache&&h.cache.hit){
       setOverviewHistLoad(note||'Pre-cached history · ready', false)
       setTimeout(function(){ setOverviewHistLoad(null) },1600)
@@ -1496,7 +1555,7 @@ function apiOrigin(){ return 'https://firostatus.com' }
 function copyTextFor(kind){
   var o=apiOrigin()
   if(kind==='status') return "curl -sS "+o+"/api/status | jq '{summary, spark_sethash_consensus, stats}'"
-  if(kind==='ci') return "curl -sS -f "+o+"/api/ci | jq '{ok,spark_ok,max_lag,reasons}'"
+  if(kind==='ci') return "curl -sS "+o+"/api/ci | jq '{ok,spark_ok,max_lag,reasons}'"
   if(kind==='badge') return '[![Firo Spark fleet]('+o+'/api/badge)]('+o+'/)'
   if(kind==='alert-hook') return alWebhookExample()
   return ''
@@ -1721,7 +1780,7 @@ function render(s){
     warn.appendChild(sdiv) }
   else if(!tipOk && sparkOk){
     var tipw=document.createElement('div'); tipw.className='note'; tipw.style.marginTop='12px'
-    tipw.innerHTML='Spark path looks consistent, but tip lag is outside the green band (max_lag '+(stt.max_lag)+'). <code>/api/ci</code> returns HTTP 503 until lag ≤2 — use <code>spark_ok</code> for Spark-only checks.'
+    tipw.innerHTML='Spark path looks consistent, but tip lag is outside the green band (max_lag '+(stt.max_lag)+'). <code>/api/ci</code> <code>ok</code> is false until lag ≤2 — use <code>spark_ok</code> for Spark-only checks. HTTP stays 200 after warmup.'
     warn.appendChild(tipw)
   }
 
@@ -2094,6 +2153,12 @@ function renderDetail(id){
     '<div class="panel"><div class="phead"><h2>Status history ribbon</h2><span class="h">green / yellow / red over time</span></div><div class="pbody"><div class="status-ribbon" id="d-status-ribbon"></div><p class="note" style="margin-top:8px;margin-bottom:0">Each segment is a history sample for this backend. Hover a slice for timestamp.</p></div></div>'+
 
     '<div class="panel"><div class="phead"><h2>Durable history charts</h2><span class="h">/api/history?id='+esc(id)+'</span></div><div class="pbody">'+
+      '<div class="range-btns" data-hist-range role="group" aria-label="History window">'+
+        '<button type="button" class="tbtn" data-hours="24">24h</button>'+
+        '<button type="button" class="tbtn" data-hours="168">7d</button>'+
+        '<button type="button" class="tbtn" data-hours="720">30d</button>'+
+      '</div>'+
+      '<p class="hist-coverage" data-hist-coverage></p>'+
       '<div id="d-hist-load" role="status" aria-live="polite"><span class="spin"></span><span>Loading durable history — please wait…</span></div>'+
       '<div class="chart-grid">'+
         '<div><div class="chart-lbl">Tip lag (blocks)</div><div class="chart-box"><canvas id="d-hist-lag"></canvas></div></div>'+
@@ -2140,6 +2205,7 @@ function renderDetail(id){
     if(window.FiroEnhance&&window.FiroEnhance.paintDetailCharts){
       window.FiroEnhance.paintDetailCharts(id, h||HistAPI)
     }
+    paintHistCoverage(h||HistAPI)
     var note=document.getElementById('d-hist-load')
     if(!note) return
     var msg=historyFreshNote(h)
@@ -2154,13 +2220,42 @@ function renderDetail(id){
       note.style.display='none'
     }
   }
-  fetch('/api/history?id='+encodeURIComponent(id)+'&hours=168&limit=800').then(function(r){return r.ok?r.json():null}).then(function(h){
+  bindHistRanges()
+  syncHistRangeButtons()
+  paintHistCoverage(HistAPI)
+  fetchDetailHistory(id, applyDetailHistory)
+}
+
+function fetchDetailHistory(id, apply){
+  function applyDetailHistory(h){
+    if(typeof apply==='function') apply(h)
+    else {
+      if(curDetail!==id) return
+      if(window.FiroEnhance&&window.FiroEnhance.paintDetailCharts){
+        window.FiroEnhance.paintDetailCharts(id, h||HistAPI)
+      }
+      paintHistCoverage(h||HistAPI)
+      var note=document.getElementById('d-hist-load')
+      if(!note) return
+      var msg=historyFreshNote(h)
+      if(h&&h.cache&&(h.cache.refreshing||(h.cache.age_s!=null&&h.cache.age_s>60))){
+        note.style.display=''
+        note.innerHTML='<span class="spin"></span><span>'+esc(msg||'Loading freshest samples…')+'</span>'
+      } else if(msg&&h&&h.cache&&h.cache.hit){
+        note.style.display=''
+        note.innerHTML='<span>'+esc(msg)+'</span>'
+        setTimeout(function(){ if(curDetail===id&&note) note.style.display='none' },2200)
+      } else {
+        note.style.display='none'
+      }
+    }
+  }
+  fetch('/api/history?id='+encodeURIComponent(id)+'&hours='+histHours+'&limit='+histLimitFor(histHours)).then(function(r){return r.ok?r.json():null}).then(function(h){
     applyDetailHistory(h)
-    // One follow-up if a background rebuild was in flight.
     if(h&&h.cache&&h.cache.refreshing){
       setTimeout(function(){
         if(curDetail!==id) return
-        fetch('/api/history?id='+encodeURIComponent(id)+'&hours=168&limit=800').then(function(r){return r.ok?r.json():null}).then(applyDetailHistory).catch(function(){})
+        fetch('/api/history?id='+encodeURIComponent(id)+'&hours='+histHours+'&limit='+histLimitFor(histHours)).then(function(r){return r.ok?r.json():null}).then(applyDetailHistory).catch(function(){})
       },2500)
     }
   }).catch(function(){
@@ -2860,7 +2955,7 @@ try {
   function startHistoryLater(){
     if(histStarted) return
     histStarted=true
-    fetchHistory(); setInterval(fetchHistory,60000)
+    bindHistRanges(); syncHistRangeButtons(); fetchHistory(); setInterval(fetchHistory,60000)
   }
   var histBoot=setTimeout(startHistoryLater,1500)
   var histWatch=setInterval(function(){

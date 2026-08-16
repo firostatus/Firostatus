@@ -1,10 +1,10 @@
-# Firo Spark Sync Monitor ó JSON API
+# Firo Spark Sync Monitor ù JSON API
 
 For Firo developers, wallet teams, Electrum operators, and tooling authors.
 
 **Production:** [https://firostatus.com](https://firostatus.com/)  
 Human guide: [Developers](https://firostatus.com/developers)  
-Machine reference: [`/api/docs`](https://firostatus.com/api/docs) ó verifier: [`/docs/VERIFY.md`](https://firostatus.com/docs/VERIFY.md)
+Machine reference: [`/api/docs`](https://firostatus.com/api/docs) ù verifier: [`/docs/VERIFY.md`](https://firostatus.com/docs/VERIFY.md)
 
 ## Routes
 
@@ -31,7 +31,7 @@ This API watches the **curated public fleet** and publishes tip freshness, Spark
 
 ### Not for
 
-- In-wallet ópick a serveró UI
+- In-wallet ùpick a serverù UI
 - Replacing a wallet Electrum / Spark SDK
 - Ranking hosts by user-device RTT (probe RTT is from this monitor only)
 - Authoritative chain state (full nodes remain authoritative)
@@ -60,7 +60,7 @@ Available on production ([firostatus.com](https://firostatus.com/)) and any alwa
 | `id` | all | Filter `points` to one registry id |
 | `limit` | `3000` | Max points returned |
 
-Uptime is **strict green %**: share of stored samples with `status=green` over 24h and 7d (fleet + per endpoint). Yellow/red count as down ó not a wallet SLA. Prefer `/api/ci` `spark_ok` for Spark health.
+Uptime is **strict green %**: share of stored samples with `status=green` over 24h and 7d (fleet + per endpoint). Yellow/red count as down ù not a wallet SLA. Prefer `/api/ci` `spark_ok` for Spark health.
 
 ```bash
 curl -sS https://firostatus.com/api/history \
@@ -88,7 +88,7 @@ curl -sS https://firostatus.com/api/spark \
 
 ### CI gate (fail on Spark-unhealthy fleet)
 
-`/api/ci` returns HTTP **200** when `ok` is true, else **503**.
+`/api/ci` returns HTTP **200** after warmup even when `ok` is false. HTTP **503** only while warming (no snapshot yet). Gate on `.ok` / `.spark_ok` in the JSON ó do not use `curl -f` as the Spark check.
 
 | Field | Meaning |
 |-------|---------|
@@ -98,7 +98,7 @@ curl -sS https://firostatus.com/api/spark \
 | `reasons` | Why `ok` is false |
 
 ```bash
-curl -sS -f https://firostatus.com/api/ci \
+curl -sS https://firostatus.com/api/ci \
   | jq '{ok, spark_ok, max_lag, yellow, notes, reasons, green, red}'
 ```
 

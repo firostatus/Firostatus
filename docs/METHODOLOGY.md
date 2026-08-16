@@ -79,7 +79,7 @@ Session charts in the browser are separate (localStorage) and are labeled as ses
 | `ok` | `spark_ok` **and** `max_lag ≤ 2` |
 | `notes` | Informational when `ok` but some hosts are ops-yellow |
 
-HTTP **200** when `ok`, else **503**. Mild lag alone can yield `spark_ok: true` with `ok: false`. Badge text prefers **spark ok** over green-count.
+HTTP **200** once a snapshot exists, even when `ok` is false. HTTP **503** only while the process is still warming (no endpoints yet). Gate CI on the JSON fields (`spark_ok` / `ok`), not on `curl -f`. Mild lag alone can yield `spark_ok: true` with `ok: false`. Badge text prefers **spark ok** over green-count.
 
 ## Operator self-check
 

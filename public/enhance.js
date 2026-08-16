@@ -518,6 +518,24 @@
     return byId
   }
 
+  function seriesIds(byId, s) {
+    var seen = {}
+    var ids = []
+    ;((s && s.endpoints) || []).forEach(function (e) {
+      if (e && e.id && !seen[e.id]) {
+        seen[e.id] = true
+        ids.push(e.id)
+      }
+    })
+    Object.keys(byId).forEach(function (id) {
+      if (!seen[id]) {
+        seen[id] = true
+        ids.push(id)
+      }
+    })
+    return ids
+  }
+
   function paintLagChart(hist, s) {
     var wrap = document.getElementById('chart-lag-wrap')
     var canvas = document.getElementById('chart-lag')
@@ -552,9 +570,9 @@
     }
     var nameOf = {}
     ;((s && s.endpoints) || []).forEach(function (e) { nameOf[e.id] = e.name })
-    var datasets = Object.keys(byId).map(function (id, i) {
+    var datasets = seriesIds(byId, s).map(function (id, i) {
       var map = {}
-      byId[id].forEach(function (p) { map[p.t] = p.lag })
+      ;(byId[id] || []).forEach(function (p) { map[p.t] = p.lag })
       return {
         label: nameOf[id] || id,
         data: labels.map(function (t) { return map[t] != null ? map[t] : null }),
@@ -644,9 +662,9 @@
     }
     var nameOf = {}
     ;((s && s.endpoints) || []).forEach(function (e) { nameOf[e.id] = e.name })
-    var datasets = Object.keys(byId).map(function (id, i) {
+    var datasets = seriesIds(byId, s).map(function (id, i) {
       var map = {}
-      byId[id].forEach(function (p) { map[p.t] = p.anonset_ms != null ? p.anonset_ms / 1000 : null })
+      ;(byId[id] || []).forEach(function (p) { map[p.t] = p.anonset_ms != null ? p.anonset_ms / 1000 : null })
       return {
         label: nameOf[id] || id,
         data: labels.map(function (t) { return map[t] != null ? map[t] : null }),

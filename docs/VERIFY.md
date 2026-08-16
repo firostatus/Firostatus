@@ -17,10 +17,10 @@ Yellow hosts can still mean **ops** (tip lag, probe RTT outlier vs fleet, TLS &l
 ## Curls
 
 ```bash
-curl -sS -f https://firostatus.com/api/ci | jq '{ok,spark_ok,max_lag,green,yellow,red,notes,reasons}'
+curl -sS https://firostatus.com/api/ci | jq '{ok,spark_ok,max_lag,green,yellow,red,notes,reasons}'
 curl -sS https://firostatus.com/api/spark | jq '{anonset_source,summary,spark_consensus,spark_sethash_consensus,stats}'
 curl -sS https://firostatus.com/api/status | jq '{anonset_source,summary,stats:{max_lag,reachable,anonset_ms,anonset_mb,probe_rtt_yellow_threshold_ms}}'
-curl -sS 'https://firostatus.com/api/history?hours=24' | jq '{storage,db,sample_count,recording_since,uptime_note,uptime:{fleet_pct_24h},cache}'
+curl -sS 'https://firostatus.com/api/history?hours=24' | jq '{storage,db,sample_count,recording_since,coverage,query,uptime:{fleet_pct_24h},events:(.events.sethash|length),first:(.points[0].t),last:(.points[-1].t)}'
 # Equivalent (default window): curl -sS https://firostatus.com/api/history | jq '{storage,db,sample_count,uptime:{fleet_pct_24h}}'
 curl -sS https://firostatus.com/api/health | jq '{ok,node,history,summary}'
 ```

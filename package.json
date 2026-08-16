@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "pack:deploy": "node scripts/pack-deploy.js",
-    "check:spark": "node scripts/spark-health-check.js"
+    "check:spark": "node scripts/spark-health-check.js",
+    "check:history": "node scripts/check-history-window.js"
   },
   "keywords": [
     "firo",
