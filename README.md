@@ -81,13 +81,15 @@ Open the dashboard tabs:
 | **Spark health** | Anon-set ranking, growth charts, bandwidth compare (same setHash, different MB), setHash divergence windows |
 | **Operators** | Listed host vs fleet (TLS, tip, Spark, fetch) · light live probe · listing via issue / merge request |
 | **Alerts** | On-board event log · Telegram / webhook for the maintainer · `/api/ci` for CI |
-| **Ecosystem** | Spark Names + fironames.com + optional local node sync/peers/mempool/hashrate + weekly digest |
+| **Ecosystem** | Public Spark Names registry + [fironames.com](https://fironames.com) ledger/activity + copy-ready weekly digest · optional local `firod` fields when `FIRO_RPC_*` is set (not required on firostatus.com) |
 | **Developers** | Routes, field glossary, `spark_ok`-first CI, embed kit, ElectrumX → JSON field map, live `/api/ci` chips |
 | **About** | What this is, status model, privacy, operators & alerts, funding |
 
-**Per-backend detail** (`#/backend/:id`): reliability verdict, fail-reason chips, vs-fleet compare, status ribbon, durable history charts, setHash windows for that host, copy connect / page link / jq curls.
+**Per-backend detail** (`/backend/:id`): reliability verdict, fail-reason chips, vs-fleet compare, status ribbon, durable history charts, setHash windows for that host, copy connect / page link / jq curls.
 
 **Diagnose drawer** (yellow/red): likely cause, wallet tips vs operator checks, raw signal, copyable OpenSSL / API reproduce snippet.
+
+**Ask the monitor:** in-board FAQ assistant for Spark / setHash, Alerts, Operators, CI, and live fleet status (no tokens, no wallet data).
 
 ---
 
@@ -132,15 +134,15 @@ Shared probe core: `lib/probe.js`. Shared UI: `public/index.html` + `public/enha
 Browser ──► /api/status | /api/history | /api/ci | /api/ecosystem | /api/check | /api/alerts | …
                  │
             server.js (always-on)
-         light probes + anon sweeps + alerts
+         light probes + anon sweeps + alerts + ecosystem
            SQLite /api/history
                  │
-            lib/probe.js
+     lib/probe.js · lib/ecosystem.js
 ```
 
-| | Light probes | Anon-set | History |
-|--|--------------|----------|---------|
-| **Production / `npm start`** | Live (~45s) | Live sweeps (~5 min) · `anonset_source: live` | SQLite → `/api/history` |
+| | Light probes | Anon-set | History | Ecosystem |
+|--|--------------|----------|---------|-----------|
+| **Production / `npm start`** | Live (~45s) | Live sweeps (~5 min) · `anonset_source: live` | SQLite → `/api/history` | Public explorer + fironames.com (RPC optional) |
 
 ---
 
@@ -163,9 +165,11 @@ npm start
 | `lib/history.js` | SQLite samples, fleet series, setHash events, uptime |
 | `lib/apiMeta.js` | `/api/docs` glossary, registry, deep links |
 | `lib/alerts.js` | Telegram / webhook alerts + on-host event log |
+| `lib/ecosystem.js` | Spark Names + fironames.com digest · optional local RPC |
 | `lib/selfcheck.js` | Operator self-check (private IPs rejected) |
 | `public/index.html` | Dashboard |
 | `public/enhance.js` | Charts, scorecard, compare, diagnose, analytics |
+| `public/assets/` | Favicon + Firo brand mark |
 | `data/history.sqlite` | Created at runtime (**gitignored**) |
 
 ---
@@ -237,9 +241,11 @@ curl -sS 'https://firostatus.com/api/history?hours=24&limit=200' \
 | `/overview` | Overview |
 | `/spark` | Spark health |
 | `/backends` | Backends table |
+| `/ecosystem` | Spark Names · fironames · digest |
 | `/developers` | Developers |
 | `/operators` | Operator self-check |
 | `/alerts` | Fleet event log · Telegram / webhook |
+| `/about` | About |
 | `/backend/mathnodes` | Per-host detail (registry id) |
 
 Registry ids and deep links also appear under `/api/docs`.
@@ -277,7 +283,7 @@ Funded via the **Firo Crowdfunding System** — about **$2,000** (in FIRO), 50/5
 | **M1** | Always-on production: domain, MIT source, live dashboard + API + history, forum launch |
 | **M2** | Ops: alerting, operator self-check, decision surfaces, handover |
 
-Proposal archive: [`docs/PROPOSAL.md`](docs/PROPOSAL.md) · funding page: [funding.firo.org](https://funding.firo.org/proposals/zz-noimg3-panagot) · live Names/digest: dashboard **Ecosystem** tab.
+Proposal archive: [`docs/PROPOSAL.md`](docs/PROPOSAL.md) · funding page: [funding.firo.org](https://funding.firo.org/proposals/zz-noimg3-panagot) · live Names/digest: [firostatus.com/ecosystem](https://firostatus.com/ecosystem).
 
 ---
 

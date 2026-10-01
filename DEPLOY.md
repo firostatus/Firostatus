@@ -60,4 +60,4 @@ Expect `anonset_source: "live"` (or `live_refreshing` / `last_good` during a swe
 
 ## Optional · full Firo node
 
-Firo’s chain (~9 GB; ~35 GB headroom recommended) is light enough that `firod` can work on some cPanel accounts as a daemon — if limits/ToS allow and it survives reboot. Leave `FIRO_RPC_*` unset until then; Ecosystem hides local tip / peers / mempool / hashrate / UTXO / Names cross-check. Details: `AGENTS.md` § Future · optional full Firo node.
+Firo’s chain (~9 GB; ~35 GB headroom recommended) is light enough that `firod` can work on some hosts as a daemon — if limits/ToS allow and it survives reboot. Leave `FIRO_RPC_*` unset until then; Ecosystem uses public explorer + fironames.com only and hides local tip / peers / mempool / hashrate / UTXO / Names cross-check. See `.env.example` and `docs/API.md` (`/api/ecosystem`).
