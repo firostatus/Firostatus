@@ -1,0 +1,24 @@
+{
+  "name": "firostatus",
+  "version": "0.3.0",
+  "description": "FiroStatus — Spark sync & Electrum fleet health for firostatus.com. Privacy-safe probes only.",
+  "scripts": {
+    "start": "node server.js",
+    "pack:deploy": "node scripts/pack-deploy.js",
+    "check:spark": "node scripts/spark-health-check.js",
+    "check:history": "node scripts/check-history-window.js"
+  },
+  "keywords": [
+    "firo",
+    "firostatus",
+    "spark",
+    "electrumx",
+    "monitoring"
+  ],
+  "author": "Panagiotis Pollis (panagot)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {}
+}
